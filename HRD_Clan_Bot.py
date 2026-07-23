@@ -256,7 +256,7 @@ async def recruitment(ctx, action: str = None):
 # 봇 토큰 입력 (환경변수에서 로드)
 TOKEN = os.getenv("DISCORD_TOKEN", "YOUR_BOT_TOKEN_HERE")
 if TOKEN == "YOUR_BOT_TOKEN_HERE":
-    print("⚠️ 경고: DISCORD_TOKEN 환경변수가 설���되지 않았습니다!")
+    print("⚠️ 경고: DISCORD_TOKEN 환경변수가 설정되지 않았습니다!")
     print("📝 .env 파일을 생성하고 'DISCORD_TOKEN=your_token_here'를 추가하세요.")
 
 bot.run(TOKEN)
