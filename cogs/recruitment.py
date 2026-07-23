@@ -11,9 +11,6 @@ from utils.directory import directory
 parser = get_config("config")
 comment_parser = get_config("comment")
 
-# 현재 구인 메시지 ID를 저장하는 딕셔너리
-current_recruitment_messages = {}
-
 class BattleView(discord.ui.View):
     """참여 인원을 관리하는 뷰"""
     def __init__(self, message_id: int = None, game_time: str = "미정", game_type: str = "미정"):
@@ -72,7 +69,8 @@ class BattleView(discord.ui.View):
             battle_data[str(self.message_id)] = {
                 "players": player_ids,
                 "game_time": self.game_time,
-                "game_type": self.game_type
+                "game_type": self.game_type,
+                "created_at": datetime.now(timezone.utc).isoformat()
             }
             save_battle_data(battle_data)
 
@@ -170,6 +168,24 @@ def save_battle_data(data: dict):
     except Exception as e:
         print(f"❌ 데이터 저장 오류: {e}")
 
+def get_time_difference(created_at_str: str) -> str:
+    """생성 시간으로부터 경과 시간 반환"""
+    try:
+        created_at = datetime.fromisoformat(created_at_str)
+        now = datetime.now(timezone.utc)
+        diff = now - created_at
+        
+        minutes = diff.total_seconds() // 60
+        if minutes < 1:
+            return "방금 전"
+        elif minutes < 60:
+            return f"{int(minutes)}분 전"
+        else:
+            hours = minutes // 60
+            return f"{int(hours)}시간 전"
+    except:
+        return "알 수 없음"
+
 class GameTimeModal(discord.ui.Modal, title="게임 시간 설정"):
     """게임 시간 입력 모달"""
     game_time = discord.ui.TextInput(
@@ -240,6 +256,38 @@ class SettingsView(discord.ui.View):
         
         await interaction.response.send_modal(GameTypeModal(self.cog))
 
+class DeleteRecruitmentSelect(discord.ui.Select):
+    """삭제할 구인 선택 드롭다운"""
+    def __init__(self, cog, recruitments: Dict):
+        self.cog = cog
+        self.recruitments = recruitments
+        
+        options = []
+        for message_id, data in recruitments.items():
+            game_time = data.get("game_time", "미정")
+            game_type = data.get("game_type", "미정")
+            created_at = data.get("created_at", "")
+            time_diff = get_time_difference(created_at)
+            
+            label = f"{game_time} - {game_type} ({time_diff})"
+            options.append(discord.SelectOption(label=label, value=message_id))
+        
+        super().__init__(
+            placeholder="삭제할 구인을 선택하세요...",
+            options=options,
+            custom_id="delete_recruitment_select"
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        message_id = self.values[0]
+        await self.cog.delete_specific_recruitment(interaction, message_id)
+
+class DeleteRecruitmentView(discord.ui.View):
+    """삭제할 구인 선택 뷰"""
+    def __init__(self, cog, recruitments: Dict):
+        super().__init__(timeout=300)
+        self.add_item(DeleteRecruitmentSelect(cog, recruitments))
+
 class Recruitment(commands.Cog):
     """구인 관련 명령어 및 기능"""
     def __init__(self, bot: commands.Bot):
@@ -296,9 +344,6 @@ class Recruitment(commands.Cog):
         view.message_id = message.id
         view.save_players()
         
-        # 현재 서버의 구인 메시지 ID 저장
-        current_recruitment_messages[interaction.guild_id] = message.id
-        
         # 설정 완료 메시지
         embed = discord.Embed(
             title="✅ 구인이 시작되었습니다!",
@@ -311,12 +356,12 @@ class Recruitment(commands.Cog):
     async def delete_recruitment(self, interaction: discord.Interaction):
         """
         슬래시 명령어: /삭제
-        진행 중인 구인 메시지를 삭제합니다
+        진행 중인 구인 메시지를 선택하여 삭제합니다
         """
-        guild_id = interaction.guild_id
+        # 저장된 배틀 데이터 로드
+        battle_data = load_battle_data()
         
-        # 현재 서버에 구인 메시지가 있는지 확인
-        if guild_id not in current_recruitment_messages:
+        if not battle_data:
             embed = discord.Embed(
                 title="❌ 구인 메시지 없음",
                 description="진행 중인 구인 메시지가 없습니다.",
@@ -325,30 +370,38 @@ class Recruitment(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=5)
             return
         
+        # 현재 서버의 구인만 필터링 (선택사항: 모든 구인 표시 가능)
+        embed = discord.Embed(
+            title="📋 진행 중인 구인 목록",
+            description="삭제할 구인을 선택하세요:",
+            color=discord.Color.blue(),
+        )
+        
+        view = DeleteRecruitmentView(self, battle_data)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
+
+    async def delete_specific_recruitment(self, interaction: discord.Interaction, message_id: str):
+        """특정 구인 메시지 삭제"""
         try:
-            message_id = current_recruitment_messages[guild_id]
             channel = interaction.channel
             
             # 메시지 삭제 시도
             try:
-                message = await channel.fetch_message(message_id)
+                message = await channel.fetch_message(int(message_id))
                 await message.delete()
             except discord.NotFound:
                 # 메시지가 이미 삭제되었거나 찾을 수 없는 경우
                 pass
             
-            # 저장된 메시지 ID 제거
-            del current_recruitment_messages[guild_id]
-            
-            # 데이터도 제거
+            # 데이터에서 제거
             battle_data = load_battle_data()
-            if str(message_id) in battle_data:
-                del battle_data[str(message_id)]
+            if message_id in battle_data:
+                del battle_data[message_id]
                 save_battle_data(battle_data)
             
             embed = discord.Embed(
                 title="✅ 구인이 삭제되었습니다!",
-                description="진행 중인 구인 메시지가 삭제되었습니다.",
+                description="선택한 구인 메시지가 삭제되었습니다.",
                 color=discord.Color.green(),
             )
             await interaction.response.send_message(embed=embed, ephemeral=False, delete_after=5)
