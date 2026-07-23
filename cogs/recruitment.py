@@ -140,7 +140,7 @@ class BattleView(discord.ui.View):
         # 이미 참여했는지 확인
         if user in self.players or user.id in self.players:
             await interaction.response.send_message(
-                "이미 참여하셨습니다!", ephemeral=True
+                "이미 참여하셨습니다!", ephemeral=False, delete_after=3
             )
             return
 
@@ -151,11 +151,11 @@ class BattleView(discord.ui.View):
             self.save_players()
             await interaction.message.edit(embed=self.create_embed())
             await interaction.response.send_message(
-                f"참여가 완료되었습니다! ({empty_index + 1}번 슬롯)", ephemeral=True
+                f"참여가 완료되었습니다! ({empty_index + 1}번 슬롯)", ephemeral=False, delete_after=3
             )
         except ValueError:
             await interaction.response.send_message(
-                "자리가 모두 찼습니다!", ephemeral=True
+                "자리가 모두 찼습니다!", ephemeral=False, delete_after=3
             )
 
     @discord.ui.button(
@@ -181,11 +181,11 @@ class BattleView(discord.ui.View):
             self.save_players()
             await interaction.message.edit(embed=self.create_embed())
             await interaction.response.send_message(
-                "참여가 취소되었습니다.", ephemeral=True
+                "참여가 취소되었습니다.", ephemeral=False, delete_after=3
             )
         else:
             await interaction.response.send_message(
-                "참여 목록에 없습니다.", ephemeral=True
+                "참여 목록에 없습니다.", ephemeral=False, delete_after=3
             )
 
 def load_battle_data() -> dict:
@@ -305,7 +305,7 @@ class Recruitment(commands.Cog):
                 description="진행 중인 구인 메시지가 없습니다.",
                 color=discord.Color.red(),
             )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=3)
             return
         
         try:
@@ -334,7 +334,7 @@ class Recruitment(commands.Cog):
                 description="진행 중인 구인 메시지가 삭제되었습니다.",
                 color=discord.Color.green(),
             )
-            await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=5)
+            await interaction.response.send_message(embed=embed, ephemeral=False, delete_after=3)
             
         except Exception as e:
             print(f"❌ 구인 삭제 중 오류: {e}")
@@ -343,7 +343,7 @@ class Recruitment(commands.Cog):
                 description=f"구인 삭제 중 오류가 발생했습니다: {e}",
                 color=discord.Color.red(),
             )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=3)
 
 async def setup(bot: commands.Bot):
     """Cog 로드"""
