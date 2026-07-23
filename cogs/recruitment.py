@@ -14,59 +14,6 @@ comment_parser = get_config("comment")
 # 현재 구인 메시지 ID를 저장하는 딕셔너리
 current_recruitment_messages = {}
 
-class GameTimeSelect(discord.ui.Select):
-    """게임 시간 선택 드롭다운"""
-    def __init__(self, cog):
-        options = [
-            discord.SelectOption(label="미정", value="미정", emoji="❓"),
-            discord.SelectOption(label="모일시 바로 시작", value="모일시 바로 시작", emoji="⚡"),
-            discord.SelectOption(label="오후 1시", value="오후 1시", emoji="🕐"),
-            discord.SelectOption(label="오후 3시", value="오후 3시", emoji="🕒"),
-            discord.SelectOption(label="오후 6시", value="오후 6시", emoji="🕕"),
-            discord.SelectOption(label="오후 9시", value="오후 9시", emoji="🕘"),
-            discord.SelectOption(label="밤 11시", value="밤 11시", emoji="🕛"),
-        ]
-        super().__init__(placeholder="게임 시간을 선택하세요", options=options, custom_id="game_time_select")
-        self.cog = cog
-
-    async def callback(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        self.cog.recruitment_settings["game_time"] = self.values[0]
-        
-        # 두 설정이 모두 선택되었는지 확인 (미정이 아닌 경우)
-        if (self.cog.recruitment_settings["game_time"] != "미정" and 
-            self.cog.recruitment_settings["game_type"] != "미정"):
-            await self.cog.start_recruitment(interaction)
-
-class GameTypeSelect(discord.ui.Select):
-    """게임 종류 선택 드롭다운"""
-    def __init__(self, cog):
-        options = [
-            discord.SelectOption(label="미정", value="미정", emoji="❓"),
-            discord.SelectOption(label="일반", value="일반", emoji="🎮"),
-            discord.SelectOption(label="경쟁", value="경쟁", emoji="🏆"),
-            discord.SelectOption(label="미니게임", value="미니게임", emoji="🎯"),
-            discord.SelectOption(label="커스텀", value="커스텀", emoji="⚙️"),
-        ]
-        super().__init__(placeholder="게임 종류를 선택하세요", options=options, custom_id="game_type_select")
-        self.cog = cog
-
-    async def callback(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        self.cog.recruitment_settings["game_type"] = self.values[0]
-        
-        # 두 설정이 모두 선택되었는지 확인 (미정이 아닌 경우)
-        if (self.cog.recruitment_settings["game_time"] != "미정" and 
-            self.cog.recruitment_settings["game_type"] != "미정"):
-            await self.cog.start_recruitment(interaction)
-
-class SettingsView(discord.ui.View):
-    """게임 설정 선택 뷰"""
-    def __init__(self, cog):
-        super().__init__(timeout=300)
-        self.add_item(GameTimeSelect(cog=cog))
-        self.add_item(GameTypeSelect(cog=cog))
-
 class BattleView(discord.ui.View):
     """참여 인원을 관리하는 뷰"""
     def __init__(self, message_id: int = None, game_time: str = "미정", game_type: str = "미정"):
@@ -223,6 +170,76 @@ def save_battle_data(data: dict):
     except Exception as e:
         print(f"❌ 데이터 저장 오류: {e}")
 
+class GameTimeModal(discord.ui.Modal, title="게임 시간 설정"):
+    """게임 시간 입력 모달"""
+    game_time = discord.ui.TextInput(
+        label="게임 시간",
+        placeholder="예: 오후 6시, 오후 1시, 밤 11시 등",
+        required=True,
+        max_length=50
+    )
+    
+    def __init__(self, cog):
+        super().__init__()
+        self.cog = cog
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        self.cog.recruitment_settings["game_time"] = self.game_time.value
+        await interaction.response.send_message(
+            f"✅ 게임 시간이 '{self.game_time.value}'로 설정되었습니다!",
+            ephemeral=False,
+            delete_after=3
+        )
+        # 게임 종류 입력 모달 표시
+        await interaction.followup.send(
+            "이제 게임 종류를 입력해주세요!",
+            ephemeral=False,
+            delete_after=2
+        )
+
+class GameTypeModal(discord.ui.Modal, title="게임 종류 설정"):
+    """게임 종류 입력 모달"""
+    game_type = discord.ui.TextInput(
+        label="게임 종류",
+        placeholder="예: 일반, 경쟁, 미니게임, 커스텀 등",
+        required=True,
+        max_length=50
+    )
+    
+    def __init__(self, cog):
+        super().__init__()
+        self.cog = cog
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        self.cog.recruitment_settings["game_type"] = self.game_type.value
+        await interaction.response.defer()
+        
+        # 구인 시작
+        await self.cog.start_recruitment(interaction)
+
+class SettingsView(discord.ui.View):
+    """게임 설정 입력 버튼 뷰"""
+    def __init__(self, cog):
+        super().__init__(timeout=300)
+        self.cog = cog
+    
+    @discord.ui.button(label="시간 설정", style=discord.ButtonStyle.blurple, custom_id="time_input_btn")
+    async def time_input_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(GameTimeModal(self.cog))
+    
+    @discord.ui.button(label="종류 설정", style=discord.ButtonStyle.blurple, custom_id="type_input_btn")
+    async def type_input_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # 게임 시간이 먼저 설정되었는지 확인
+        if self.cog.recruitment_settings["game_time"] == "미정":
+            await interaction.response.send_message(
+                "❌ 게임 시간을 먼저 설정해주세요!",
+                ephemeral=False,
+                delete_after=3
+            )
+            return
+        
+        await interaction.response.send_modal(GameTypeModal(self.cog))
+
 class Recruitment(commands.Cog):
     """구인 관련 명령어 및 기능"""
     def __init__(self, bot: commands.Bot):
@@ -232,11 +249,11 @@ class Recruitment(commands.Cog):
             "game_type": "미정"
         }
 
-    @discord.app_commands.command(name="양식", description="배틀그라운드 구인 설정 및 시작")
+    @discord.app_commands.command(name="양식", description="배틀그라운드 구인 설정")
     async def recruitment_settings_slash(self, interaction: discord.Interaction):
         """
         슬래시 명령어: /양식
-        게임 시간과 게임 종류를 선택하면 자동으로 구인 메시지 발송
+        게임 시간과 게임 종류를 직접 입력하여 구인 시작
         """
         # 설정 초기화
         self.recruitment_settings = {
@@ -246,7 +263,7 @@ class Recruitment(commands.Cog):
         
         embed = discord.Embed(
             title="⚙️ 배틀그라운드 구인 설정",
-            description="게임 시간과 종류를 **모두** 선택하면 자동으로 구인이 시작됩니다!\n\n(미정이 아닌 값을 선택해주세요)",
+            description="아래 버튼을 눌러 게임 시간과 종류를 입력하세요!\n\n1️⃣ 시간 설정 버튼 클릭\n2️⃣ 종류 설정 버튼 클릭\n3️⃣ 자동으로 구인 시작! 🚀",
             color=discord.Color.blue(),
         )
         
@@ -270,7 +287,7 @@ class Recruitment(commands.Cog):
         
         # @here 태그와 함께 메시지 발송
         message = await channel.send(
-            "@here 🎮 배틀그라��드 스쿼드 구인이 시작되었습니다!",
+            "@here 🎮 배틀그라운드 스쿼드 구인이 시작되었습니다!",
             embed=view.create_embed(),
             view=view
         )
