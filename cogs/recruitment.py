@@ -13,7 +13,7 @@ comment_parser = get_config("comment")
 
 class GameTimeSelect(discord.ui.Select):
     """게임 시간 선택 드롭다운"""
-    def __init__(self, callback=None):
+    def __init__(self, cog):
         options = [
             discord.SelectOption(label="미정", value="미정", emoji="❓"),
             discord.SelectOption(label="모일시 바로 시작", value="모일시 바로 시작", emoji="⚡"),
@@ -24,16 +24,19 @@ class GameTimeSelect(discord.ui.Select):
             discord.SelectOption(label="밤 11시", value="밤 11시", emoji="🕛"),
         ]
         super().__init__(placeholder="게임 시간을 선택하세요", options=options, custom_id="game_time_select")
-        self.user_callback = callback
+        self.cog = cog
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        if self.user_callback:
-            await self.user_callback("game_time", self.values[0])
+        self.cog.recruitment_settings["game_time"] = self.values[0]
+        
+        # 두 설정이 모두 완료되었는지 확인
+        if self.cog.recruitment_settings["game_time"] != "미정" or self.cog.recruitment_settings["game_type"] != "미정":
+            await self.cog.start_recruitment(interaction)
 
 class GameTypeSelect(discord.ui.Select):
     """게임 종류 선택 드롭다운"""
-    def __init__(self, callback=None):
+    def __init__(self, cog):
         options = [
             discord.SelectOption(label="미정", value="미정", emoji="❓"),
             discord.SelectOption(label="일반", value="일반", emoji="🎮"),
@@ -42,19 +45,22 @@ class GameTypeSelect(discord.ui.Select):
             discord.SelectOption(label="커스텀", value="커스텀", emoji="⚙️"),
         ]
         super().__init__(placeholder="게임 종류를 선택하세요", options=options, custom_id="game_type_select")
-        self.user_callback = callback
+        self.cog = cog
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        if self.user_callback:
-            await self.user_callback("game_type", self.values[0])
+        self.cog.recruitment_settings["game_type"] = self.values[0]
+        
+        # 두 설정이 모두 완료되었는지 확인
+        if self.cog.recruitment_settings["game_time"] != "미정" or self.cog.recruitment_settings["game_type"] != "미정":
+            await self.cog.start_recruitment(interaction)
 
 class SettingsView(discord.ui.View):
     """게임 설정 선택 뷰"""
-    def __init__(self, callback=None):
+    def __init__(self, cog):
         super().__init__(timeout=300)
-        self.add_item(GameTimeSelect(callback=callback))
-        self.add_item(GameTypeSelect(callback=callback))
+        self.add_item(GameTimeSelect(cog=cog))
+        self.add_item(GameTypeSelect(cog=cog))
 
 class BattleView(discord.ui.View):
     """참여 인원을 관리하는 뷰"""
@@ -221,51 +227,61 @@ class Recruitment(commands.Cog):
             "game_type": "미정"
         }
 
-    async def update_recruitment_settings(self, key: str, value: str):
-        """구인 설정 업데이트"""
-        self.recruitment_settings[key] = value
-
-    @commands.command(name="구인")
-    async def recruitment(self, ctx: commands.Context, action: str = None):
+    @discord.app_commands.command(name="양식", description="배틀그라운드 구인 설정")
+    async def recruitment_settings_slash(self, interaction: discord.Interaction):
         """
-        구인 관련 명령어
-        .구인 양식 - 게임 설정 (시간, 종류)
-        .구인 시작 - 구인 메시지 발송 및 @here 태그
+        슬래시 명령어: /양식
+        게임 시간과 게임 종류를 선택하면 자동으로 구인 메시지 발송
         """
+        # 설정 초기화
+        self.recruitment_settings = {
+            "game_time": "미정",
+            "game_type": "미정"
+        }
         
-        if action is None or action == "양식":
-            # 게임 설정 선택 창 표시
-            embed = discord.Embed(
-                title="⚙️ 배틀그라운드 구인 설정",
-                description="아래에서 게임 시간과 종류를 선택하세요!",
-                color=discord.Color.blue(),
-            )
-            
-            view = SettingsView(callback=self.update_recruitment_settings)
-            await ctx.send(embed=embed, view=view)
-            
-        elif action == "시작":
-            # 구인 메시지 발송
-            view = BattleView(
-                game_time=self.recruitment_settings.get("game_time", "미정"),
-                game_type=self.recruitment_settings.get("game_type", "미정")
-            )
-            
-            # @here 태그와 함께 메시지 발송
-            message = await ctx.send(
-                "@here 🎮 배틀그라운드 스쿼드 구인이 시작되었습니다!",
-                embed=view.create_embed(),
-                view=view
-            )
-            
-            # 메시지 ID 저장
-            view.message_id = message.id
-            view.save_players()
-            
-            await ctx.send("✅ 구인이 시작되었습니다!")
-            
-        else:
-            await ctx.send("❌ 명령어 오류!\n사용법: `.구인 양식` 또는 `.구인 시작`")
+        embed = discord.Embed(
+            title="⚙️ 배틀그라운드 구인 설정",
+            description="아래에서 게임 시간과 종류를 선택하면 자동으로 구인이 시작됩니다!",
+            color=discord.Color.blue(),
+        )
+        
+        view = SettingsView(cog=self)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
+
+    async def start_recruitment(self, interaction: discord.Interaction):
+        """구인 메시지 자동 발송"""
+        # 이미 응답했다면 팔로우업
+        try:
+            await interaction.response.defer()
+        except:
+            pass
+        
+        # 원래 명령어를 사용한 채널에 구인 메시지 발송
+        channel = interaction.channel
+        
+        view = BattleView(
+            game_time=self.recruitment_settings.get("game_time", "미정"),
+            game_type=self.recruitment_settings.get("game_type", "미정")
+        )
+        
+        # @here 태그와 함께 메시지 발송
+        message = await channel.send(
+            "@here 🎮 배틀그라운드 스쿼드 구인이 시작되었습니다!",
+            embed=view.create_embed(),
+            view=view
+        )
+        
+        # 메시지 ID 저장
+        view.message_id = message.id
+        view.save_players()
+        
+        # 설정 완료 메시지
+        embed = discord.Embed(
+            title="✅ 구인이 시작되었습니다!",
+            description=f"**게임 시간**: {self.recruitment_settings.get('game_time', '미정')}\n**게임 종류**: {self.recruitment_settings.get('game_type', '미정')}",
+            color=discord.Color.green(),
+        )
+        await channel.send(embed=embed, delete_after=5)
 
 async def setup(bot: commands.Bot):
     """Cog 로드"""
