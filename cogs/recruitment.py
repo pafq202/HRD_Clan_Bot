@@ -13,12 +13,13 @@ comment_parser = get_config("comment")
 
 class BattleView(discord.ui.View):
     """참여 인원을 관리하는 뷰"""
-    def __init__(self, message_id: int = None, game_time: str = "미정", game_type: str = "미정"):
+    def __init__(self, message_id: int = None, game_time: str = "미정", game_type: str = "미정", max_players: int = 4):
         super().__init__(timeout=None)
         self.message_id = message_id
         self.game_time = game_time
         self.game_type = game_type
-        self.players = [None, None, None, None]  # 4명의 자리
+        self.max_players = max_players
+        self.players = [None] * max_players  # 설정된 최대 인원만큼 자리 생성
         
         # 저장된 데이터가 있으면 로드
         if message_id:
@@ -30,7 +31,7 @@ class BattleView(discord.ui.View):
     def create_embed(self) -> discord.Embed:
         """구인 메시지 Embed 생성"""
         player_list_str = ""
-        for i in range(4):
+        for i in range(self.max_players):
             if self.players[i]:
                 if isinstance(self.players[i], int):
                     player_list_str += f"{i+1}. <@{self.players[i]}>\n"
@@ -42,7 +43,8 @@ class BattleView(discord.ui.View):
         description = (
             "🎮 BATTLEGROUND @here\n"
             f"게임 시간: {self.game_time}\n"
-            f"게임종류: {self.game_type}\n\n"
+            f"게임종류: {self.game_type}\n"
+            f"모집 인원: {self.max_players}명\n\n"
             "참여인원\n"
             f"{player_list_str}"
         )
@@ -70,6 +72,7 @@ class BattleView(discord.ui.View):
                 "players": player_ids,
                 "game_time": self.game_time,
                 "game_type": self.game_type,
+                "max_players": self.max_players,
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             save_battle_data(battle_data)
@@ -206,12 +209,6 @@ class GameTimeModal(discord.ui.Modal, title="게임 시간 설정"):
             ephemeral=False,
             delete_after=3
         )
-        # 게임 종류 입력 모달 표시
-        await interaction.followup.send(
-            "이제 게임 종류를 입력해주세요!",
-            ephemeral=False,
-            delete_after=2
-        )
 
 class GameTypeModal(discord.ui.Modal, title="게임 종류 설정"):
     """게임 종류 입력 모달"""
@@ -228,10 +225,66 @@ class GameTypeModal(discord.ui.Modal, title="게임 종류 설정"):
     
     async def on_submit(self, interaction: discord.Interaction):
         self.cog.recruitment_settings["game_type"] = self.game_type.value
-        await interaction.response.defer()
+        await interaction.response.send_message(
+            f"✅ 게임 종류가 '{self.game_type.value}'로 설정되었습니다!",
+            ephemeral=False,
+            delete_after=3
+        )
+
+class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
+    """인원 수 입력 모달"""
+    player_count = discord.ui.TextInput(
+        label="모집 인원 (2~4명)",
+        placeholder="예: 2 (듀오) 또는 4 (스쿼드)",
+        required=True,
+        max_length=1
+    )
+    
+    def __init__(self, cog):
+        super().__init__()
+        self.cog = cog
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            count = int(self.player_count.value)
+            
+            # 유효성 검사 (2~4명)
+            if count < 2 or count > 4:
+                await interaction.response.send_message(
+                    "❌ 인원은 2명(듀오) ~ 4명(스쿼드) 사이여야 합니다!",
+                    ephemeral=False,
+                    delete_after=3
+                )
+                return
+            
+            self.cog.recruitment_settings["player_count"] = count
+            
+            # 인원 타입 결정
+            if count == 2:
+                player_type = "듀오"
+            elif count == 3:
+                player_type = "트리오"
+            else:
+                player_type = "스쿼드"
+            
+            await interaction.response.send_message(
+                f"✅ 모집 인원이 {count}명({player_type})으로 설정되었습니다!",
+                ephemeral=False,
+                delete_after=3
+            )
+            
+            # 세 가지 설정이 모두 완료되었는지 확인
+            if (self.cog.recruitment_settings["game_time"] != "미정" and
+                self.cog.recruitment_settings["game_type"] != "미정" and
+                self.cog.recruitment_settings["player_count"] > 0):
+                await self.cog.start_recruitment(interaction)
         
-        # 구인 시작
-        await self.cog.start_recruitment(interaction)
+        except ValueError:
+            await interaction.response.send_message(
+                "❌ 숫자를 입력해주세요! (2 또는 3 또는 4)",
+                ephemeral=False,
+                delete_after=3
+            )
 
 class SettingsView(discord.ui.View):
     """게임 설정 입력 버튼 뷰"""
@@ -245,16 +298,11 @@ class SettingsView(discord.ui.View):
     
     @discord.ui.button(label="종류 설정", style=discord.ButtonStyle.blurple, custom_id="type_input_btn")
     async def type_input_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # 게임 시간이 먼저 설정되었는지 확인
-        if self.cog.recruitment_settings["game_time"] == "미정":
-            await interaction.response.send_message(
-                "❌ 게임 시간을 먼저 설정해주세요!",
-                ephemeral=False,
-                delete_after=3
-            )
-            return
-        
         await interaction.response.send_modal(GameTypeModal(self.cog))
+    
+    @discord.ui.button(label="인원 설정", style=discord.ButtonStyle.blurple, custom_id="player_input_btn")
+    async def player_input_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(PlayerCountModal(self.cog))
 
 class DeleteRecruitmentSelect(discord.ui.Select):
     """삭제할 구인 선택 드롭다운"""
@@ -266,10 +314,11 @@ class DeleteRecruitmentSelect(discord.ui.Select):
         for message_id, data in recruitments.items():
             game_time = data.get("game_time", "미정")
             game_type = data.get("game_type", "미정")
+            max_players = data.get("max_players", 4)
             created_at = data.get("created_at", "")
             time_diff = get_time_difference(created_at)
             
-            label = f"{game_time} - {game_type} ({time_diff})"
+            label = f"{game_time} - {game_type} ({max_players}명) ({time_diff})"
             options.append(discord.SelectOption(label=label, value=message_id))
         
         super().__init__(
@@ -294,24 +343,30 @@ class Recruitment(commands.Cog):
         self.bot = bot
         self.recruitment_settings = {
             "game_time": "미정",
-            "game_type": "미정"
+            "game_type": "미정",
+            "player_count": 0
         }
 
     @discord.app_commands.command(name="양식", description="배틀그라운드 구인 설정")
     async def recruitment_settings_slash(self, interaction: discord.Interaction):
         """
         슬래시 명령어: /양식
-        게임 시간과 게임 종류를 직접 입력하여 구인 시작
+        게임 시간, 종류, 인원을 설정하여 구인 시작
         """
         # 설정 초기화
         self.recruitment_settings = {
             "game_time": "미정",
-            "game_type": "미정"
+            "game_type": "미정",
+            "player_count": 0
         }
         
         embed = discord.Embed(
             title="⚙️ 배틀그라운드 구인 설정",
-            description="아래 버튼을 눌러 게임 시간과 종류를 입력하세요!\n\n1️⃣ 시간 설정 버튼 클릭\n2️⃣ 종류 설정 버튼 클릭\n3️⃣ 자동으로 구인 시작! 🚀",
+            description="아래 버튼을 눌러 게임 시간과 종류 및 인원을 선택 입력하세요!\n\n"
+                       "1️⃣ 시간 설정 버튼 클릭\n"
+                       "2️⃣ 종류 설정 버튼 클릭\n"
+                       "3️⃣ 인원 설정 버튼 클릭\n\n"
+                       "모든 설정을 완료하면 자동으로 구인이 시작됩니다! 🚀",
             color=discord.Color.blue(),
         )
         
@@ -328,9 +383,12 @@ class Recruitment(commands.Cog):
         # 원래 명령어를 사용한 채널에 구인 메시지 발송
         channel = interaction.channel
         
+        player_count = self.recruitment_settings.get("player_count", 4)
+        
         view = BattleView(
             game_time=self.recruitment_settings.get("game_time", "미정"),
-            game_type=self.recruitment_settings.get("game_type", "미정")
+            game_type=self.recruitment_settings.get("game_type", "미정"),
+            max_players=player_count
         )
         
         # @here 태그와 함께 메시지 발송
@@ -344,10 +402,21 @@ class Recruitment(commands.Cog):
         view.message_id = message.id
         view.save_players()
         
+        # 인원 타입 결정
+        if player_count == 2:
+            player_type = "듀오"
+        elif player_count == 3:
+            player_type = "트리오"
+        else:
+            player_type = "스쿼드"
+        
         # 설정 완료 메시지
         embed = discord.Embed(
             title="✅ 구인이 시작되었습니다!",
-            description=f"**게임 시간**: {self.recruitment_settings.get('game_time', '미정')}\n**게임 종류**: {self.recruitment_settings.get('game_type', '미정')}\n\n삭제하려면 `/삭제` 명령어를 사용하세요.",
+            description=f"**게임 시간**: {self.recruitment_settings.get('game_time', '미정')}\n"
+                       f"**게임 종류**: {self.recruitment_settings.get('game_type', '미정')}\n"
+                       f"**모집 인원**: {player_count}명({player_type})\n\n"
+                       f"삭제하려면 `/삭제` 명령어를 사용하세요.",
             color=discord.Color.green(),
         )
         await channel.send(embed=embed, delete_after=10)
