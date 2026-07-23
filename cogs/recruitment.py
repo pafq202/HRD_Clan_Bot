@@ -11,6 +11,9 @@ from utils.directory import directory
 parser = get_config("config")
 comment_parser = get_config("comment")
 
+# 현재 구인 메시지와 설정 메시지를 추적하는 딕셔너리
+recruitment_messages = {}  # {message_id: {"recruitment": message_id, "settings": message_id, "list": message_id}}
+
 class BattleView(discord.ui.View):
     """참여 인원을 관리하는 뷰"""
     def __init__(self, message_id: int = None, game_time: str = "미정", game_type: str = "미정", max_players: int = 4):
@@ -306,9 +309,10 @@ class SettingsView(discord.ui.View):
 
 class DeleteRecruitmentSelect(discord.ui.Select):
     """삭제할 구인 선택 드롭다운"""
-    def __init__(self, cog, recruitments: Dict):
+    def __init__(self, cog, recruitments: Dict, list_message_id: int):
         self.cog = cog
         self.recruitments = recruitments
+        self.list_message_id = list_message_id
         
         options = []
         for message_id, data in recruitments.items():
@@ -329,13 +333,13 @@ class DeleteRecruitmentSelect(discord.ui.Select):
     
     async def callback(self, interaction: discord.Interaction):
         message_id = self.values[0]
-        await self.cog.delete_specific_recruitment(interaction, message_id)
+        await self.cog.delete_specific_recruitment(interaction, message_id, self.list_message_id)
 
 class DeleteRecruitmentView(discord.ui.View):
     """삭제할 구인 선택 뷰"""
-    def __init__(self, cog, recruitments: Dict):
+    def __init__(self, cog, recruitments: Dict, list_message_id: int):
         super().__init__(timeout=300)
-        self.add_item(DeleteRecruitmentSelect(cog, recruitments))
+        self.add_item(DeleteRecruitmentSelect(cog, recruitments, list_message_id))
 
 class Recruitment(commands.Cog):
     """구인 관련 명령어 및 기능"""
@@ -419,7 +423,13 @@ class Recruitment(commands.Cog):
                        f"삭제하려면 `/삭제` 명령어를 사용하세요.",
             color=discord.Color.green(),
         )
-        await channel.send(embed=embed, delete_after=10)
+        settings_message = await channel.send(embed=embed, delete_after=10)
+        
+        # 구인 메시지와 설정 메시지 ID 매핑 저장
+        recruitment_messages[message.id] = {
+            "recruitment": message.id,
+            "settings": settings_message.id
+        }
 
     @discord.app_commands.command(name="삭제", description="진행 중인 구인 메시지 삭제")
     async def delete_recruitment(self, interaction: discord.Interaction):
@@ -446,20 +456,48 @@ class Recruitment(commands.Cog):
             color=discord.Color.blue(),
         )
         
-        view = DeleteRecruitmentView(self, battle_data)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
+        view = DeleteRecruitmentView(self, battle_data, 0)  # list_message_id는 나중에 업데이트됨
+        message = await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
+        
+        # 목록 메시지 ID를 view에 저장
+        if isinstance(message, discord.Message):
+            view.children[0].list_message_id = message.id
+        else:
+            # 비동기 처리로 메시지 ID 얻기
+            fetched_message = await interaction.original_response()
+            view.children[0].list_message_id = fetched_message.id
 
-    async def delete_specific_recruitment(self, interaction: discord.Interaction, message_id: str):
-        """특정 구인 메시지 삭제"""
+    async def delete_specific_recruitment(self, interaction: discord.Interaction, message_id: str, list_message_id: int):
+        """특정 구인 메시지 삭제 (구인 메시지와 설정 메시지 모두 삭제)"""
         try:
             channel = interaction.channel
             
             # 메시지 삭제 시도
             try:
-                message = await channel.fetch_message(int(message_id))
-                await message.delete()
+                # 구인 메시지 삭제
+                recruitment_msg = await channel.fetch_message(int(message_id))
+                await recruitment_msg.delete()
             except discord.NotFound:
-                # 메시지가 이미 삭제되었거나 찾을 수 없는 경우
+                pass
+            
+            # 설정 메시지 삭제 (있다면)
+            if int(message_id) in recruitment_messages:
+                try:
+                    settings_msg_id = recruitment_messages[int(message_id)]["settings"]
+                    settings_msg = await channel.fetch_message(settings_msg_id)
+                    await settings_msg.delete()
+                except discord.NotFound:
+                    pass
+                
+                # 매핑 정보 제거
+                del recruitment_messages[int(message_id)]
+            
+            # 목록 메시지 삭제
+            try:
+                if list_message_id > 0:
+                    list_msg = await channel.fetch_message(list_message_id)
+                    await list_msg.delete()
+            except discord.NotFound:
                 pass
             
             # 데이터에서 제거
@@ -470,7 +508,7 @@ class Recruitment(commands.Cog):
             
             embed = discord.Embed(
                 title="✅ 구인이 삭제되었습니다!",
-                description="선택한 구인 메시지가 삭제되었습니다.",
+                description="선택한 구인 메시지와 설정이 모두 삭제되었습니다.",
                 color=discord.Color.green(),
             )
             await interaction.response.send_message(embed=embed, ephemeral=False, delete_after=5)
