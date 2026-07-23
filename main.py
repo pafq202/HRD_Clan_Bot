@@ -27,6 +27,13 @@ async def on_ready():
     log.info(f"✅ 봇 로그인 완료: {bot.user}")
     log.info(f"📋 서버 수: {len(bot.guilds)}")
     log.info(f"✅ 로드된 Cog 수: {len(bot.cogs)}")
+    log.info(f"⚡ 슬래시 명령어: {len(bot.tree.get_commands())} 개")
+    
+    try:
+        synced = await bot.tree.sync()
+        log.info(f"✅ 슬래시 명령어 동기화 완료: {len(synced)} 개")
+    except Exception as e:
+        log.error(f"❌ 슬래시 명령어 동기화 실패: {e}")
 
 @bot.event
 async def on_command_error(ctx, error):
