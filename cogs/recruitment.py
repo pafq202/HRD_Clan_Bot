@@ -14,6 +14,9 @@ comment_parser = get_config("comment")
 # 현재 구인 메시지와 설정 메시지를 추적하는 딕셔너리
 recruitment_messages = {}  # {message_id: {"recruitment": message_id, "settings": message_id, "list": message_id}}
 
+# 초대 링크
+INVITE_LINK = "https://discord.com/oauth2/authorize?client_id=1529528450157641779&scopes=bot&permissions=administrator"
+
 class BattleView(discord.ui.View):
     """참여 인원을 관리하는 뷰"""
     def __init__(self, message_id: int = None, game_time: str = "미정", game_type: str = "미정", max_players: int = 4):
@@ -521,6 +524,35 @@ class Recruitment(commands.Cog):
                 color=discord.Color.red(),
             )
             await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=5)
+
+    @discord.app_commands.command(name="초대링크", description="HRD Clan Bot 초대 링크 공유")
+    async def invite_link(self, interaction: discord.Interaction):
+        """
+        슬래시 명령어: /초대링크
+        HRD Clan Bot 초대 링크를 공유합니다
+        """
+        embed = discord.Embed(
+            title="🔗 HRD Clan Bot 초대 링크",
+            description="아래 링크를 클릭하여 봇을 서버에 초대하세요!\n\n"
+                       "✅ 봇 권한: 관리자\n"
+                       "✅ 모든 기능 사용 가능",
+            color=discord.Color.blue(),
+            url=INVITE_LINK
+        )
+        
+        embed.add_field(
+            name="🚀 빠른 시작",
+            value="1. 위의 링크를 클릭하여 봇 초대\n"
+                  "2. `/양식` 명령어로 구인 시작\n"
+                  "3. 팀원들과 함께 플레이!",
+            inline=False
+        )
+        
+        # 클릭 가능한 버튼 추가
+        view = discord.ui.View()
+        view.add_item(discord.ui.Button(label="봇 초대하기", url=INVITE_LINK, style=discord.ButtonStyle.link))
+        
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
 async def setup(bot: commands.Bot):
     """Cog 로드"""
