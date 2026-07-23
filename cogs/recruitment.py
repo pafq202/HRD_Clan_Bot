@@ -11,6 +11,9 @@ from utils.directory import directory
 parser = get_config("config")
 comment_parser = get_config("comment")
 
+# 현재 구인 메시지 ID를 저장하는 딕셔너리
+current_recruitment_messages = {}
+
 class GameTimeSelect(discord.ui.Select):
     """게임 시간 선택 드롭다운"""
     def __init__(self, cog):
@@ -30,8 +33,9 @@ class GameTimeSelect(discord.ui.Select):
         await interaction.response.defer()
         self.cog.recruitment_settings["game_time"] = self.values[0]
         
-        # 두 설정이 모두 완료되었는지 확인
-        if self.cog.recruitment_settings["game_time"] != "미정" or self.cog.recruitment_settings["game_type"] != "미정":
+        # 두 설정이 모두 선택되었는지 확인 (미정이 아닌 경우)
+        if (self.cog.recruitment_settings["game_time"] != "미정" and 
+            self.cog.recruitment_settings["game_type"] != "미정"):
             await self.cog.start_recruitment(interaction)
 
 class GameTypeSelect(discord.ui.Select):
@@ -51,8 +55,9 @@ class GameTypeSelect(discord.ui.Select):
         await interaction.response.defer()
         self.cog.recruitment_settings["game_type"] = self.values[0]
         
-        # 두 설정이 모두 완료되었는지 확인
-        if self.cog.recruitment_settings["game_time"] != "미정" or self.cog.recruitment_settings["game_type"] != "미정":
+        # 두 설정이 모두 선택되었는지 확인 (미정이 아닌 경우)
+        if (self.cog.recruitment_settings["game_time"] != "미정" and 
+            self.cog.recruitment_settings["game_type"] != "미정"):
             await self.cog.start_recruitment(interaction)
 
 class SettingsView(discord.ui.View):
@@ -227,7 +232,7 @@ class Recruitment(commands.Cog):
             "game_type": "미정"
         }
 
-    @discord.app_commands.command(name="양식", description="배틀그라운드 구인 설정")
+    @discord.app_commands.command(name="양식", description="배틀그라운드 구인 설정 및 시작")
     async def recruitment_settings_slash(self, interaction: discord.Interaction):
         """
         슬래시 명령어: /양식
@@ -241,7 +246,7 @@ class Recruitment(commands.Cog):
         
         embed = discord.Embed(
             title="⚙️ 배틀그라운드 구인 설정",
-            description="아래에서 게임 시간과 종류를 선택하면 자동으로 구인이 시작됩니다!",
+            description="게임 시간과 종류를 **모두** 선택하면 자동으로 구인이 시작됩니다!\n\n(미정이 아닌 값을 선택해주세요)",
             color=discord.Color.blue(),
         )
         
@@ -250,7 +255,6 @@ class Recruitment(commands.Cog):
 
     async def start_recruitment(self, interaction: discord.Interaction):
         """구인 메시지 자동 발송"""
-        # 이미 응답했다면 팔로우업
         try:
             await interaction.response.defer()
         except:
@@ -271,17 +275,75 @@ class Recruitment(commands.Cog):
             view=view
         )
         
-        # 메시지 ID 저장
+        # 메시지 ID 저장 (삭제용)
         view.message_id = message.id
         view.save_players()
+        
+        # 현재 서버의 구인 메시지 ID 저장
+        current_recruitment_messages[interaction.guild_id] = message.id
         
         # 설정 완료 메시지
         embed = discord.Embed(
             title="✅ 구인이 시작되었습니다!",
-            description=f"**게임 시간**: {self.recruitment_settings.get('game_time', '미정')}\n**게임 종류**: {self.recruitment_settings.get('game_type', '미정')}",
+            description=f"**게임 시간**: {self.recruitment_settings.get('game_time', '미정')}\n**게임 종류**: {self.recruitment_settings.get('game_type', '미정')}\n\n삭제하려면 `/삭제` 명령어를 사용하세요.",
             color=discord.Color.green(),
         )
-        await channel.send(embed=embed, delete_after=5)
+        await channel.send(embed=embed, delete_after=10)
+
+    @discord.app_commands.command(name="삭제", description="진행 중인 구인 메시지 삭제")
+    async def delete_recruitment(self, interaction: discord.Interaction):
+        """
+        슬래시 명령어: /삭제
+        진행 중인 구인 메시지를 삭제합니다
+        """
+        guild_id = interaction.guild_id
+        
+        # 현재 서버에 구인 메시지가 있는지 확인
+        if guild_id not in current_recruitment_messages:
+            embed = discord.Embed(
+                title="❌ 구인 메시지 없음",
+                description="진행 중인 구인 메시지가 없습니다.",
+                color=discord.Color.red(),
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        
+        try:
+            message_id = current_recruitment_messages[guild_id]
+            channel = interaction.channel
+            
+            # 메시지 삭제 시도
+            try:
+                message = await channel.fetch_message(message_id)
+                await message.delete()
+            except discord.NotFound:
+                # 메시지가 이미 삭제되었거나 찾을 수 없는 경우
+                pass
+            
+            # 저장된 메시지 ID 제거
+            del current_recruitment_messages[guild_id]
+            
+            # 데이터도 제거
+            battle_data = load_battle_data()
+            if str(message_id) in battle_data:
+                del battle_data[str(message_id)]
+                save_battle_data(battle_data)
+            
+            embed = discord.Embed(
+                title="✅ 구인이 삭제되었습니다!",
+                description="진행 중인 구인 메시지가 삭제되었습니다.",
+                color=discord.Color.green(),
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=5)
+            
+        except Exception as e:
+            print(f"❌ 구인 삭제 중 오류: {e}")
+            embed = discord.Embed(
+                title="❌ 오류 발생",
+                description=f"구인 삭제 중 오류가 발생했습니다: {e}",
+                color=discord.Color.red(),
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot: commands.Bot):
     """Cog 로드"""
