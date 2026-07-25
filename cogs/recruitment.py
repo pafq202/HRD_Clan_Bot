@@ -426,7 +426,7 @@ class Recruitment(commands.Cog):
                        f"삭제하려면 `/삭제` 명령어를 사용하세요.",
             color=discord.Color.green(),
         )
-        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=10)
+        await interaction.followup.send(embed=embed, delete_after=10)
         
         # 구인 메시지와 설정 메시지 ID 매핑 저장
         recruitment_messages[message.id] = {
@@ -525,7 +525,7 @@ class Recruitment(commands.Cog):
             )
             await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=5)
 
-    @discord.app_commands.command(name="초대링크", description="HRD Clan Bot 초대 링크 공유")
+    @discord.app_commands.command(name="초대링크", description="HRD Clan Bot 초대 링크 ���유")
     async def invite_link(self, interaction: discord.Interaction):
         """
         슬래시 명령어: /초대링크
