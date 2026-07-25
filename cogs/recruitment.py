@@ -94,7 +94,7 @@ class BattleView(discord.ui.View):
         # 이미 참여했는지 확인
         if user in self.players or user.id in self.players:
             await interaction.response.send_message(
-                "이미 참여하셨습니다!", ephemeral=False, delete_after=5
+                "이미 참여하셨습니다!", ephemeral=True, delete_after=5
             )
             return
 
@@ -105,11 +105,11 @@ class BattleView(discord.ui.View):
             self.save_players()
             await interaction.message.edit(embed=self.create_embed())
             await interaction.response.send_message(
-                f"참여가 완료되었습니다! ({empty_index + 1}번 슬롯)", ephemeral=False, delete_after=10
+                f"참여가 완료되었습니다! ({empty_index + 1}번 슬롯)", ephemeral=True, delete_after=10
             )
         except ValueError:
             await interaction.response.send_message(
-                "자리가 모두 찼습니다!", ephemeral=False, delete_after=10
+                "자리가 모두 찼습니다!", ephemeral=True, delete_after=10
             )
 
     @discord.ui.button(
@@ -135,11 +135,11 @@ class BattleView(discord.ui.View):
             self.save_players()
             await interaction.message.edit(embed=self.create_embed())
             await interaction.response.send_message(
-                "참여가 취소되었습니다.", ephemeral=False, delete_after=3
+                "참여가 취소되었습니다.", ephemeral=True, delete_after=3
             )
         else:
             await interaction.response.send_message(
-                "참여 목록에 없습니다.", ephemeral=False, delete_after=5
+                "참여 목록에 없습니다.", ephemeral=True, delete_after=5
             )
 
 def load_battle_data() -> dict:
@@ -212,7 +212,7 @@ class GameTimeModal(discord.ui.Modal, title="게임 시간 설정"):
         self.cog.recruitment_settings["game_time"] = self.game_time.value
         await interaction.response.send_message(
             f"✅ 게임 시간이 '{self.game_time.value}'로 설정되었습니다!",
-            ephemeral=False,
+            ephemeral=True,
             delete_after=3
         )
 
@@ -233,7 +233,7 @@ class GameTypeModal(discord.ui.Modal, title="게임 종류 설정"):
         self.cog.recruitment_settings["game_type"] = self.game_type.value
         await interaction.response.send_message(
             f"✅ 게임 종류가 '{self.game_type.value}'로 설정되었습니다!",
-            ephemeral=False,
+            ephemeral=True,
             delete_after=3
         )
 
@@ -258,7 +258,7 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
             if count < 2 or count > 4:
                 await interaction.response.send_message(
                     "❌ 인원은 2명(듀오) ~ 4명(스쿼드) 사이여야 합니다!",
-                    ephemeral=False,
+                    ephemeral=True,
                     delete_after=3
                 )
                 return
@@ -275,7 +275,7 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
             
             await interaction.response.send_message(
                 f"✅ 모집 인원이 {count}명({player_type})으로 설정되었습니다!",
-                ephemeral=False,
+                ephemeral=True,
                 delete_after=3
             )
             
@@ -288,7 +288,7 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
         except ValueError:
             await interaction.response.send_message(
                 "❌ 숫자를 입력해주세요! (2 또는 3 또는 4)",
-                ephemeral=False,
+                ephemeral=True,
                 delete_after=3
             )
 
@@ -378,7 +378,7 @@ class Recruitment(commands.Cog):
         )
         
         view = SettingsView(cog=self)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     async def start_recruitment(self, interaction: discord.Interaction):
         """구인 메시지 자동 발송"""
@@ -417,7 +417,7 @@ class Recruitment(commands.Cog):
         else:
             player_type = "스쿼드"
         
-        # 설정 완료 메시지
+        # 설정 완료 메시지 (본인만 봄)
         embed = discord.Embed(
             title="✅ 구인이 시작되었습니다!",
             description=f"**게임 시간**: {self.recruitment_settings.get('game_time', '미정')}\n"
@@ -426,12 +426,12 @@ class Recruitment(commands.Cog):
                        f"삭제하려면 `/삭제` 명령어를 사용하세요.",
             color=discord.Color.green(),
         )
-        settings_message = await channel.send(embed=embed, delete_after=10)
+        await interaction.followup.send(embed=embed, ephemeral=True, delete_after=10)
         
         # 구인 메시지와 설정 메시지 ID 매핑 저장
         recruitment_messages[message.id] = {
             "recruitment": message.id,
-            "settings": settings_message.id
+            "settings": message.id
         }
 
     @discord.app_commands.command(name="삭제", description="진행 중인 구인 메시지 삭제")
@@ -460,7 +460,7 @@ class Recruitment(commands.Cog):
         )
         
         view = DeleteRecruitmentView(self, battle_data, 0)  # list_message_id는 나중에 업데이트됨
-        message = await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
+        message = await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
         
         # 목록 메시지 ID를 view에 저장
         if isinstance(message, discord.Message):
@@ -514,7 +514,7 @@ class Recruitment(commands.Cog):
                 description="선택한 구인 메시지와 설정이 모두 삭제되었습니다.",
                 color=discord.Color.green(),
             )
-            await interaction.response.send_message(embed=embed, ephemeral=False, delete_after=5)
+            await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=5)
             
         except Exception as e:
             print(f"❌ 구인 삭제 중 오류: {e}")
@@ -553,7 +553,7 @@ class Recruitment(commands.Cog):
         view = discord.ui.View()
         view.add_item(discord.ui.Button(label="봇 초대하기", url=INVITE_LINK, style=discord.ButtonStyle.link))
         
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 async def setup(bot: commands.Bot):
     """Cog 로드"""
