@@ -15,7 +15,7 @@ comment_parser = get_config("comment")
 recruitment_messages = {}  # {message_id: {"recruitment": message_id, "settings": message_id, "list": message_id}}
 
 # 초대 링크
-INVITE_LINK = "https://discord.com/oauth2/authorize?client_id=1529528450157641779&scopes=bot&permissions=administrator"
+INVITE_LINK = "https://discord.com/oauth2/authorize?client_id=1529528450157641779"
 
 class BattleView(discord.ui.View):
     """참여 인원을 관리하는 뷰"""
@@ -105,11 +105,11 @@ class BattleView(discord.ui.View):
             self.save_players()
             await interaction.message.edit(embed=self.create_embed())
             await interaction.response.send_message(
-                f"참여가 완료되었습니다! ({empty_index + 1}번 슬롯)", ephemeral=False, delete_after=5
+                f"참여가 완료되었습니다! ({empty_index + 1}번 슬롯)", ephemeral=False, delete_after=10
             )
         except ValueError:
             await interaction.response.send_message(
-                "자리가 모두 찼습니다!", ephemeral=False, delete_after=5
+                "자리가 모두 찼습니다!", ephemeral=False, delete_after=10
             )
 
     @discord.ui.button(
@@ -135,7 +135,7 @@ class BattleView(discord.ui.View):
             self.save_players()
             await interaction.message.edit(embed=self.create_embed())
             await interaction.response.send_message(
-                "참여가 취소되었습니다.", ephemeral=False, delete_after=5
+                "참여가 취소되었습니다.", ephemeral=False, delete_after=3
             )
         else:
             await interaction.response.send_message(
@@ -449,7 +449,7 @@ class Recruitment(commands.Cog):
                 description="진행 중인 구인 메시지가 없습니다.",
                 color=discord.Color.red(),
             )
-            await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=5)
+            await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=3)
             return
         
         # 현재 서버의 구인만 필터링 (선택사항: 모든 구인 표시 가능)
@@ -534,8 +534,8 @@ class Recruitment(commands.Cog):
         embed = discord.Embed(
             title="🔗 HRD Clan Bot 초대 링크",
             description="아래 링크를 클릭하여 봇을 서버에 초대하세요!\n\n"
-                       "✅ 봇 권한: 관리자\n"
-                       "✅ 모든 기능 사용 가능",
+                       "✅ 봇 권한: 메세지 보내기, 모두 멘션하기, 링크 임베드\n"
+                       "✅ 메세지 보내기 및 멘션 기능정도만 작동합니다",
             color=discord.Color.blue(),
             url=INVITE_LINK
         )
@@ -544,7 +544,8 @@ class Recruitment(commands.Cog):
             name="🚀 빠른 시작",
             value="1. 위의 링크를 클릭하여 봇 초대\n"
                   "2. `/양식` 명령어로 구인 시작\n"
-                  "3. 팀원들과 함께 플레이!",
+                  "3. `/삭제` 명령어로 구인 신청 삭제\n"
+                  "4. 팀원들과 함께 플레이!",
             inline=False
         )
         
