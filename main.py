@@ -36,20 +36,30 @@ async def on_ready():
     except Exception as e:
         log.error(f"❌ 슬래시 명령어 동기화 실패: {e}")
     
-    # 서버 정보 저장 (터미널 출력 없음)
+    # 서버 정보 저장
     await server_logger.save_server_info(bot)
+    # 터미널에 서버 정보 출력
+    server_logger.print_server_info(bot)
 
 @bot.event
 async def on_guild_join(guild: discord.Guild):
     """봇이 새 서버에 추가될 때"""
-    # 파일만 업데이트 (터미널 출력 없음)
+    # 파일 업데이트
     await server_logger.save_server_info(bot)
+    # 터미널에 추가 정보 출력
+    server_logger.print_guild_join(guild)
+    # 로그 기록
+    server_logger.log_server_action("추가", guild)
 
 @bot.event
 async def on_guild_remove(guild: discord.Guild):
     """봇이 서버에서 제거될 때"""
-    # 파일만 업데이트 (터미널 출력 없음)
+    # 파일 업데이트
     await server_logger.save_server_info(bot)
+    # 터미널에 제거 정보 출력
+    server_logger.print_guild_remove(guild)
+    # 로그 기록
+    server_logger.log_server_action("제거", guild)
 
 @bot.event
 async def on_command_error(ctx, error):
