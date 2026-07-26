@@ -10,6 +10,13 @@ def get_server_info_path() -> str:
         os.makedirs(data_dir)
     return os.path.join(data_dir, "server_info.txt")
 
+def get_server_log_path() -> str:
+    """서버 로그 파일 경로 반환"""
+    data_dir = os.path.join(directory, "data")
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+    return os.path.join(data_dir, "server_log.txt")
+
 async def save_server_info(bot: discord.ext.commands.Bot):
     """
     봇의 모든 서버 정보를 텍스트 파일에 저장
@@ -79,9 +86,13 @@ def print_server_info(bot: discord.ext.commands.Bot):
     print(f"👥 등록된 서버 수: {total_servers}개")
     
     if total_servers > 0:
-        print("\n📋 등록된 서버 목록:")
-        for index, guild in enumerate(guilds, 1):
-            print(f"  {index}️⃣ {guild.name} (ID: {guild.id}, 멤버: {guild.member_count}명)")
+        print("\n" + "=========================================")
+        print("디스코드 방이름 , 디코 서버장, 디코에 봇 초대자, 초대날자")
+        print("=========================================")
+        for guild in guilds:
+            owner_name = guild.owner.name if guild.owner else "알 수 없음"
+            print(f"{guild.name} , {owner_name} , 알 수 없음 , {guild.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+        print("=========================================\n")
     
     print("\n💾 서버 정보가 data/server_info.txt에 저장되었습니다!")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
@@ -90,26 +101,44 @@ def print_guild_join(guild: discord.Guild):
     """
     새 서버 추가 시 터미널 출력
     """
-    print("\n" + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("✅ 새 서버에 봇이 추가되었습니다!")
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print(f"🎉 서버명: {guild.name}")
-    print(f"🆔 서버 ID: {guild.id}")
-    print(f"👥 멤버 수: {guild.member_count}명")
-    print(f"📅 생성일: {guild.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"👑 소유자: {guild.owner.mention if guild.owner else '알 수 없음'}")
-    print("\n💾 서버 정보가 업데이트되었습니다!")
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+    owner_name = guild.owner.name if guild.owner else "알 수 없음"
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    print("\n" + "=========================================")
+    print("디스코드 방이름 , 디코 서버장, 디코에 봇 초대자, 초대날자")
+    print("=========================================")
+    print(f"{guild.name} , {owner_name} , 알 수 없음 , {timestamp}")
+    print("=========================================")
+    
+    print("\n📊 추가 내역:")
+    print(f"{timestamp} - {guild.name} 서버 추가됨")
+    print("=========================================\n")
 
-def print_guild_remove(guild: discord.Guild, total_servers: int):
+def print_guild_remove(guild: discord.Guild):
     """
     서버 제거 시 터미널 출력
     """
-    print("\n" + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("❌ 봇이 서버에서 제거되었습니다.")
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print(f"🚪 제거된 서버: {guild.name}")
-    print(f"🆔 서버 ID: {guild.id}")
-    print(f"\n📊 현재 등록된 총 서버: {total_servers}개")
-    print("\n💾 서버 정보가 업데이트되었습니다!")
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+    owner_name = guild.owner.name if guild.owner else "알 수 없음"
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    print("\n" + "=========================================")
+    print("⚠️  제거 내역:")
+    print(f"{timestamp} - {guild.name} 서버 제거됨 (서버장: {owner_name})")
+    print("=========================================\n")
+
+def log_server_action(action: str, guild: discord.Guild):
+    """
+    서버 추가/제거 내역을 로그 파일에 기록
+    """
+    try:
+        log_path = get_server_log_path()
+        owner_name = guild.owner.name if guild.owner else "알 수 없음"
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        log_entry = f"[{timestamp}] {action} - {guild.name} (서버장: {owner_name})\n"
+        
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(log_entry)
+    
+    except Exception as e:
+        print(f"❌ 로그 기록 오류: {e}")
