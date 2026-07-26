@@ -8,8 +8,11 @@ from utils import server_logger
 # 환경변수 로드
 load_dotenv()
 
-# 로깅 설정
-logging.basicConfig(level=logging.INFO)
+# 로깅 설정 (format 추가로 Discord.py 로깅 충돌 해결)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 log = logging.getLogger(__name__)
 
 # 봇 설정 (Intents 필요)
