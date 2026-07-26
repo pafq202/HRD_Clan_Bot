@@ -87,7 +87,7 @@ def print_server_info(bot: discord.ext.commands.Bot):
     
     if total_servers > 0:
         print("\n" + "=========================================")
-        print("디스코드 방이름 , 디코 서버장, 디코에 봇 초대자, 초대날자")
+        print("📊 현재 서버 목록")
         print("=========================================")
         for guild in guilds:
             owner_name = guild.owner.name if guild.owner else "알 수 없음"
@@ -97,34 +97,35 @@ def print_server_info(bot: discord.ext.commands.Bot):
     print("\n💾 서버 정보가 data/server_info.txt에 저장되었습니다!")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
 
+def print_guild_list(bot: discord.ext.commands.Bot):
+    """
+    현재 서버 목록을 터미널에 출력
+    """
+    guilds = bot.guilds
+    total_servers = len(guilds)
+    
+    if total_servers > 0:
+        print("\n" + "=========================================")
+        print("📊 현재 서버 목록")
+        print("=========================================")
+        for guild in guilds:
+            owner_name = guild.owner.name if guild.owner else "알 수 없음"
+            print(f"{guild.name} , {owner_name} , 알 수 없음 , {guild.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+        print("=========================================\n")
+
 def print_guild_join(guild: discord.Guild):
     """
-    새 서버 추가 시 터미널 출력
+    새 서버 추가 시 터미널 출력 (간단한 형식)
     """
-    owner_name = guild.owner.name if guild.owner else "알 수 없음"
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    
-    print("\n" + "=========================================")
-    print("디스코드 방이름 , 디코 서버장, 디코에 봇 초대자, 초대날자")
-    print("=========================================")
-    print(f"{guild.name} , {owner_name} , 알 수 없음 , {timestamp}")
-    print("=========================================")
-    
-    print("\n📊 추가 내역:")
-    print(f"{timestamp} - {guild.name} 서버 추가됨")
-    print("=========================================\n")
+    print(f"\n✅ {timestamp} - {guild.name} 추가됨")
 
 def print_guild_remove(guild: discord.Guild):
     """
-    서버 제거 시 터미널 출력
+    서버 제거 시 터미널 출력 (간단한 형식)
     """
-    owner_name = guild.owner.name if guild.owner else "알 수 없음"
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    
-    print("\n" + "=========================================")
-    print("⚠️  제거 내역:")
-    print(f"{timestamp} - {guild.name} 서버 제거됨 (서버장: {owner_name})")
-    print("=========================================\n")
+    print(f"❌ {timestamp} - {guild.name} 제거됨")
 
 def log_server_action(action: str, guild: discord.Guild):
     """
