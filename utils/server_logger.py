@@ -1,5 +1,6 @@
 import discord
 import os
+import json
 from datetime import datetime
 from utils.directory import directory
 
@@ -16,6 +17,49 @@ def get_server_log_path() -> str:
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
     return os.path.join(data_dir, "server_log.txt")
+
+def get_inviter_data_path() -> str:
+    """초대자 정보 파일 경로 반환"""
+    data_dir = os.path.join(directory, "data")
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+    return os.path.join(data_dir, "inviter_data.json")
+
+def load_inviter_data() -> dict:
+    """초대자 정보 로드"""
+    try:
+        path = get_inviter_data_path()
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"❌ 초대자 정보 로드 오류: {e}")
+    return {}
+
+def save_inviter_data(data: dict):
+    """초대자 정보 저장"""
+    try:
+        path = get_inviter_data_path()
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"❌ 초대자 정보 저장 오류: {e}")
+
+def set_inviter(guild_id: int, inviter_name: str):
+    """특정 서버의 초대자 저장"""
+    data = load_inviter_data()
+    data[str(guild_id)] = {
+        "inviter_name": inviter_name,
+        "registered_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+    save_inviter_data(data)
+
+def get_inviter(guild_id: int) -> str:
+    """특정 서버의 초대자 가져오기"""
+    data = load_inviter_data()
+    if str(guild_id) in data:
+        return data[str(guild_id)]["inviter_name"]
+    return "알 수 없음"
 
 async def save_server_info(bot: discord.ext.commands.Bot):
     """
@@ -49,12 +93,14 @@ async def save_server_info(bot: discord.ext.commands.Bot):
             content += "❌ 등록된 서버가 없습니다.\n\n"
         else:
             for index, guild in enumerate(guilds, 1):
+                inviter_name = get_inviter(guild.id)
                 content += f"{index}️⃣ {guild.name}\n"
                 content += f"   • 서버 ID: {guild.id}\n"
                 content += f"   • 멤버 수: {guild.member_count}명\n"
                 content += f"   • 채널 수: {len(guild.channels)}개\n"
                 content += f"   • 생성일: {guild.created_at.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                content += f"   • 소유자: {guild.owner.mention if guild.owner else '알 수 없음'}\n\n"
+                content += f"   • 서버장: {guild.owner.name if guild.owner else '알 수 없음'}\n"
+                content += f"   • 초대자: {inviter_name}\n\n"
         
         # 마지막 업데이트
         content += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -91,7 +137,8 @@ def print_server_info(bot: discord.ext.commands.Bot):
         print("=========================================")
         for guild in guilds:
             owner_name = guild.owner.name if guild.owner else "알 수 없음"
-            print(f"{guild.name} , {owner_name} , 알 수 없음 , {guild.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            inviter_name = get_inviter(guild.id)
+            print(f"{guild.name} , {owner_name} , {inviter_name} , {guild.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
         print("=========================================\n")
     
     print("\n💾 서버 정보가 data/server_info.txt에 저장되었습니다!")
@@ -110,7 +157,8 @@ def print_guild_list(bot: discord.ext.commands.Bot):
         print("=========================================")
         for guild in guilds:
             owner_name = guild.owner.name if guild.owner else "알 수 없음"
-            print(f"{guild.name} , {owner_name} , 알 수 없음 , {guild.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            inviter_name = get_inviter(guild.id)
+            print(f"{guild.name} , {owner_name} , {inviter_name} , {guild.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
         print("=========================================\n")
 
 def print_guild_join(guild: discord.Guild):
@@ -134,9 +182,10 @@ def log_server_action(action: str, guild: discord.Guild):
     try:
         log_path = get_server_log_path()
         owner_name = guild.owner.name if guild.owner else "알 수 없음"
+        inviter_name = get_inviter(guild.id)
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
-        log_entry = f"[{timestamp}] {action} - {guild.name} (서버장: {owner_name})\n"
+        log_entry = f"[{timestamp}] {action} - {guild.name} (서버장: {owner_name}, 초대자: {inviter_name})\n"
         
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(log_entry)
