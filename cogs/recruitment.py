@@ -24,12 +24,13 @@ async def is_admin_or_owner(interaction: discord.Interaction) -> bool:
 
 class BattleView(discord.ui.View):
     """참여 인원을 관리하는 뷰"""
-    def __init__(self, message_id: int = None, game_time: str = "미정", game_type: str = "미정", max_players: int = 4):
+    def __init__(self, message_id: int = None, game_time: str = "미정", game_type: str = "미정", max_players: int = 4, voice_channel: str = "미정"):
         super().__init__(timeout=None)
         self.message_id = message_id
         self.game_time = game_time
         self.game_type = game_type
         self.max_players = max_players
+        self.voice_channel = voice_channel
         self.players = [None] * max_players  # 설정된 최대 인원만큼 자리 생성
         
         # 저장된 데이터가 있으면 로드
@@ -55,6 +56,7 @@ class BattleView(discord.ui.View):
             "🎮 BATTLEGROUND\n"
             f"게임 시간: {self.game_time}\n"
             f"게임종류: {self.game_type}\n"
+            f"📍 음성채널: {self.voice_channel}\n"
             f"모집 인원: {self.max_players}명\n\n"
             "참여인원\n"
             f"{player_list_str}"
@@ -84,6 +86,7 @@ class BattleView(discord.ui.View):
                 "game_time": self.game_time,
                 "game_type": self.game_type,
                 "max_players": self.max_players,
+                "voice_channel": self.voice_channel,
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             save_battle_data(battle_data)
@@ -287,7 +290,8 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
             # 세 가지 설정이 모두 완료되었는지 확인
             if (self.cog.recruitment_settings["game_time"] != "미정" and
                 self.cog.recruitment_settings["game_type"] != "미정" and
-                self.cog.recruitment_settings["player_count"] > 0):
+                self.cog.recruitment_settings["player_count"] > 0 and
+                self.cog.recruitment_settings["voice_channel"] != "미정"):
                 await self.cog.start_recruitment(interaction)
         
         except ValueError:
@@ -296,6 +300,59 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
                 ephemeral=True,
                 delete_after=3
             )
+
+class VoiceChannelSelect(discord.ui.Select):
+    """음성 채널 선택 드롭다운"""
+    def __init__(self, cog, guild: discord.Guild):
+        self.cog = cog
+        self.guild = guild
+        
+        # 서버의 모든 음성 채널 가져오기
+        voice_channels = [channel for channel in guild.channels if isinstance(channel, discord.VoiceChannel)]
+        
+        options = []
+        for channel in voice_channels:
+            options.append(discord.SelectOption(label=f"🎮 {channel.name}", value=str(channel.id)))
+        
+        super().__init__(
+            placeholder="음성 채널을 선택하세요...",
+            options=options if options else [discord.SelectOption(label="음성 채널 없음", value="none")],
+            custom_id="voice_channel_select",
+            disabled=len(options) == 0
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        if self.values[0] == "none":
+            await interaction.response.send_message(
+                "❌ 사용 가능한 음성 채널이 없습니다!",
+                ephemeral=True,
+                delete_after=3
+            )
+            return
+        
+        channel_id = int(self.values[0])
+        channel = self.guild.get_channel(channel_id)
+        
+        if channel:
+            self.cog.recruitment_settings["voice_channel"] = f"#{channel.name}"
+            await interaction.response.send_message(
+                f"✅ 음성 채널이 '#{channel.name}'로 설정되었습니다!",
+                ephemeral=True,
+                delete_after=3
+            )
+            
+            # 네 가지 설정이 모두 완료되었는지 확인
+            if (self.cog.recruitment_settings["game_time"] != "미정" and
+                self.cog.recruitment_settings["game_type"] != "미정" and
+                self.cog.recruitment_settings["player_count"] > 0 and
+                self.cog.recruitment_settings["voice_channel"] != "미정"):
+                await self.cog.start_recruitment(interaction)
+
+class VoiceChannelView(discord.ui.View):
+    """음성 채널 선택 뷰"""
+    def __init__(self, cog, guild: discord.Guild):
+        super().__init__(timeout=300)
+        self.add_item(VoiceChannelSelect(cog, guild))
 
 class SettingsView(discord.ui.View):
     """게임 설정 입력 버튼 뷰"""
@@ -314,6 +371,16 @@ class SettingsView(discord.ui.View):
     @discord.ui.button(label="인원 설정", style=discord.ButtonStyle.blurple, custom_id="player_input_btn")
     async def player_input_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(PlayerCountModal(self.cog))
+    
+    @discord.ui.button(label="채널 선택", style=discord.ButtonStyle.blurple, custom_id="channel_select_btn")
+    async def channel_select_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
+        view = VoiceChannelView(self.cog, interaction.guild)
+        embed = discord.Embed(
+            title="🎧 음성 채널 선택",
+            description="아래 드롭다운에서 게임할 음성 채널을 선택하세요!",
+            color=discord.Color.blue(),
+        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 class DeleteRecruitmentSelect(discord.ui.Select):
     """삭제할 구인 선택 드롭다운"""
@@ -356,29 +423,32 @@ class Recruitment(commands.Cog):
         self.recruitment_settings = {
             "game_time": "미정",
             "game_type": "미정",
-            "player_count": 0
+            "player_count": 0,
+            "voice_channel": "미정"
         }
 
     @discord.app_commands.command(name="양식", description="배틀그라운드 구인 설정")
     async def recruitment_settings_slash(self, interaction: discord.Interaction):
         """
         슬래시 명령어: /양식
-        게임 시간, 종류, 인원을 설정하여 구인 시작
+        게임 시간, 종류, 인원, 음성 채널을 설정하여 구인 시작
         누구나 사용 가능
         """
         # 설정 초기화
         self.recruitment_settings = {
             "game_time": "미정",
             "game_type": "미정",
-            "player_count": 0
+            "player_count": 0,
+            "voice_channel": "미정"
         }
         
         embed = discord.Embed(
             title="⚙️ 배틀그라운드 구인 설정",
-            description="아래 버튼을 눌러 게임 시간과 종류 및 인원을 선택 입력하세요!\n\n"
+            description="아래 버튼을 눌러 게임 시간과 종류 및 인원, 음성 채널을 선택 입력하세요!\n\n"
                        "1️⃣ 시간 설정 버튼 클릭\n"
                        "2️⃣ 종류 설정 버튼 클릭\n"
-                       "3️⃣ 인원 설정 버튼 클릭\n\n"
+                       "3️⃣ 인원 설정 버튼 클릭\n"
+                       "4️⃣ 채널 선택 버튼 클릭\n\n"
                        "모든 설정을 완료하면 자동으로 구인이 시작됩니다! 🚀",
             color=discord.Color.blue(),
         )
@@ -401,7 +471,8 @@ class Recruitment(commands.Cog):
         view = BattleView(
             game_time=self.recruitment_settings.get("game_time", "미정"),
             game_type=self.recruitment_settings.get("game_type", "미정"),
-            max_players=player_count
+            max_players=player_count,
+            voice_channel=self.recruitment_settings.get("voice_channel", "미정")
         )
         
         # @here 태그와 함께 메시지 발송
@@ -428,7 +499,8 @@ class Recruitment(commands.Cog):
             title="✅ 구인이 시작되었습니다!",
             description=f"**게임 시간**: {self.recruitment_settings.get('game_time', '미정')}\n"
                        f"**게임 종류**: {self.recruitment_settings.get('game_type', '미정')}\n"
-                       f"**모집 인원**: {player_count}명({player_type})\n\n"
+                       f"**모집 인원**: {player_count}명({player_type})\n"
+                       f"**음성 채널**: {self.recruitment_settings.get('voice_channel', '미정')}\n\n"
                        f"삭제하려면 `/삭제` 명령어를 사용하세요.",
             color=discord.Color.green(),
         )
