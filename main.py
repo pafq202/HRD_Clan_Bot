@@ -46,7 +46,9 @@ async def on_guild_join(guild: discord.Guild):
     """봇이 새 서버에 추가될 때"""
     # 파일 업데이트
     await server_logger.save_server_info(bot)
-    # 터미널에 추가 정보 출력
+    # 터미널에 전체 서버 목록 출력
+    server_logger.print_guild_list(bot)
+    # 추가 정보 출력
     server_logger.print_guild_join(guild)
     # 로그 기록
     server_logger.log_server_action("추가", guild)
@@ -56,8 +58,10 @@ async def on_guild_remove(guild: discord.Guild):
     """봇이 서버에서 제거될 때"""
     # 파일 업데이트
     await server_logger.save_server_info(bot)
-    # 터미널에 제거 정보 출력
+    # 제거 정보 출력
     server_logger.print_guild_remove(guild)
+    # 업데이트된 서버 목록 출력
+    server_logger.print_guild_list(bot)
     # 로그 기록
     server_logger.log_server_action("제거", guild)
 
