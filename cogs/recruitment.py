@@ -17,6 +17,11 @@ recruitment_messages = {}  # {message_id: {"recruitment": message_id, "settings"
 # 초대 링크
 INVITE_LINK = "https://discord.com/oauth2/authorize?client_id=1529528450157641779"
 
+# 관리자 또는 서버 주인 권한 체크
+async def is_admin_or_owner(interaction: discord.Interaction) -> bool:
+    """사용자가 관리자 또는 서버 주인인지 확인"""
+    return interaction.user.id == interaction.guild.owner_id or interaction.user.guild_permissions.administrator
+
 class BattleView(discord.ui.View):
     """참여 인원을 관리하는 뷰"""
     def __init__(self, message_id: int = None, game_time: str = "미정", game_type: str = "미정", max_players: int = 4):
@@ -359,6 +364,7 @@ class Recruitment(commands.Cog):
         """
         슬래시 명령어: /양식
         게임 시간, 종류, 인원을 설정하여 구인 시작
+        누구나 사용 가능
         """
         # 설정 초기화
         self.recruitment_settings = {
@@ -440,6 +446,7 @@ class Recruitment(commands.Cog):
         """
         슬래시 명령어: /삭제
         진행 중인 구인 메시지를 선택하여 삭제합니다
+        누구나 사용 가능
         """
         # 저장된 배틀 데이터 로드
         battle_data = load_battle_data()
@@ -527,10 +534,12 @@ class Recruitment(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=5)
 
     @discord.app_commands.command(name="초대링크", description="HRD Clan Bot 초대 링크 공유")
+    @discord.app_commands.check(is_admin_or_owner)
     async def invite_link(self, interaction: discord.Interaction):
         """
         슬래시 명령어: /초대링크
         HRD Clan Bot 초대 링크를 공유합니다
+        관리자 또는 서버 주인만 사용 가능
         """
         embed = discord.Embed(
             title="🔗 HRD Clan Bot 초대 링크",
