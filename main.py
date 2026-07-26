@@ -56,6 +56,31 @@ async def on_command_error(ctx, error):
     log.error(f"❌ 명령어 오류: {error}")
     await ctx.send(f"오류가 발생했습니다: {error}", delete_after=5)
 
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+    """슬래시 명령어 에러 핸들러"""
+    if isinstance(error, discord.app_commands.CheckFailure):
+        embed = discord.Embed(
+            title="❌ 권한이 없습니다",
+            description="이 명령어를 사용할 권한이 없습니다.\n\n"
+                       "필요 권한:\n"
+                       "• 서버 주인 또는\n"
+                       "• 관리자 권한",
+            color=discord.Color.red(),
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=10)
+    else:
+        log.error(f"❌ 슬래시 명령어 오류: {error}")
+        embed = discord.Embed(
+            title="❌ 오류 발생",
+            description=f"명령어 실행 중 오류가 발생했습니다.",
+            color=discord.Color.red(),
+        )
+        try:
+            await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=10)
+        except:
+            pass
+
 async def load_cogs():
     """Cog 비동기 로드"""
     cogs_dir = os.path.join(directory, 'cogs')
