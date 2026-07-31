@@ -475,43 +475,79 @@ class Recruitment(commands.Cog):
             voice_channel=self.recruitment_settings.get("voice_channel", "미정")
         )
         
-        # @here 태그와 함께 메시지 발송
-        message = await channel.send(
-            "@here 🎮 배틀그라운드 스쿼드 구인이 시작되었습니다!",
-            embed=view.create_embed(),
-            view=view
-        )
+        try:
+            # @here 태그와 함께 메시지 발송
+            message = await channel.send(
+                "@here 🎮 배틀그라운드 스쿼드 구인이 시작되었습니다!",
+                embed=view.create_embed(),
+                view=view
+            )
+            
+            # 메시지 ID 저장 (삭제용)
+            view.message_id = message.id
+            view.save_players()
+            
+            # 인원 타입 결정
+            if player_count == 2:
+                player_type = "듀오"
+            elif player_count == 3:
+                player_type = "트리오"
+            else:
+                player_type = "스쿼드"
+            
+            # 설정 완료 메시지 (본인만 봄)
+            embed = discord.Embed(
+                title="✅ 구인이 시작되었습니다!",
+                description=f"**게임 시간**: {self.recruitment_settings.get('game_time', '미정')}\n"
+                           f"**게임 종류**: {self.recruitment_settings.get('game_type', '미정')}\n"
+                           f"**모집 인원**: {player_count}명({player_type})\n"
+                           f"**음성 채널**: {self.recruitment_settings.get('voice_channel', '미정')}\n\n"
+                           f"삭제하려면 `/삭제` 명령어를 사용하세요.",
+                color=discord.Color.green(),
+            )
+            msg = await interaction.followup.send(embed=embed, ephemeral=True)
+            await msg.delete(delay=10)
+            
+            # 구인 메시지와 설정 메시지 ID 매핑 저장
+            recruitment_messages[message.id] = {
+                "recruitment": message.id,
+                "settings": message.id
+            }
         
-        # 메시지 ID 저장 (삭제용)
-        view.message_id = message.id
-        view.save_players()
+        except discord.Forbidden:
+            # 권한 없음 에러
+            embed = discord.Embed(
+                title="❌ 권한 오류",
+                description="봇이 이 채널에 메시지를 보낼 권한이 없습니다!\n\n"
+                           "**해결 방법:**\n"
+                           "1. 서버 설정 → 역할 → HRD_Clan_Bot\n"
+                           "2. 다음 권한 확인:\n"
+                           "   • 메시지 보내기 ✅\n"
+                           "   • 메시지 관리 ✅\n"
+                           "   • 멘션 보내기 ✅",
+                color=discord.Color.red(),
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True, delete_after=10)
         
-        # 인원 타입 결정
-        if player_count == 2:
-            player_type = "듀오"
-        elif player_count == 3:
-            player_type = "트리오"
-        else:
-            player_type = "스쿼드"
+        except discord.NotFound:
+            # 채널을 찾을 수 없음
+            embed = discord.Embed(
+                title="❌ 채널 오류",
+                description="채널을 찾을 수 없습니다!\n\n"
+                           "채널이 삭제되었거나 접근할 수 없을 수 있습니다.",
+                color=discord.Color.red(),
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True, delete_after=10)
         
-        # 설정 완료 메시지 (본인만 봄)
-        embed = discord.Embed(
-            title="✅ 구인이 시작되었습니다!",
-            description=f"**게임 시간**: {self.recruitment_settings.get('game_time', '미정')}\n"
-                       f"**게임 종류**: {self.recruitment_settings.get('game_type', '미정')}\n"
-                       f"**모집 인원**: {player_count}명({player_type})\n"
-                       f"**음성 채널**: {self.recruitment_settings.get('voice_channel', '미정')}\n\n"
-                       f"삭제하려면 `/삭제` 명령어를 사용하세요.",
-            color=discord.Color.green(),
-        )
-        msg = await interaction.followup.send(embed=embed, ephemeral=True)
-        await msg.delete(delay=10)
-        
-        # 구인 메시지와 설정 메시지 ID 매핑 저장
-        recruitment_messages[message.id] = {
-            "recruitment": message.id,
-            "settings": message.id
-        }
+        except Exception as e:
+            # 기타 오류
+            embed = discord.Embed(
+                title="❌ 오류 발생",
+                description=f"구인 메시지 발송 중 오류가 발생했습니다:\n\n`{str(e)}`",
+                color=discord.Color.red(),
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True, delete_after=10)
+            print(f"❌ 구인 시작 오류: {e}")
 
     @discord.app_commands.command(name="삭제", description="진행 중인 구인 메시지 삭제")
     async def delete_recruitment(self, interaction: discord.Interaction):
