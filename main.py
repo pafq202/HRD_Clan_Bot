@@ -3,6 +3,7 @@ import os
 from discord.ext import commands
 from dotenv import load_dotenv
 import logging
+import asyncio
 from utils import server_logger
 
 # 환경변수 로드
@@ -31,8 +32,16 @@ bot = commands.Bot(command_prefix=".", intents=intents)
 # 현재 디렉토리
 directory = os.path.dirname(os.path.abspath(__file__))
 
+# 재연결 시도 횟수 추적
+reconnect_attempts = 0
+MAX_RECONNECT_ATTEMPTS = 5
+
 @bot.event
 async def on_ready():
+    global reconnect_attempts
+    # 연결 성공 시 재연결 시도 횟수 초기화
+    reconnect_attempts = 0
+    
     log.info(f"✅ 봇 로그인 완료: {bot.user}")
     log.info(f"📋 서버 수: {len(bot.guilds)}")
     log.info(f"✅ 로드된 Cog 수: {len(bot.cogs)}")
@@ -103,6 +112,21 @@ async def on_app_command_error(interaction: discord.Interaction, error: discord.
         except:
             pass
 
+@bot.event
+async def on_error(event, *args, **kwargs):
+    """모든 이벤트 에러 자동 처리"""
+    global reconnect_attempts
+    
+    log.error(f"❌ 이벤트 '{event}'에서 오류 발생")
+    
+    # 에러가 발생했으므로 재연결 시도
+    if reconnect_attempts < MAX_RECONNECT_ATTEMPTS:
+        reconnect_attempts += 1
+        log.warning(f"⏳ 자동 재연결 시도 ({reconnect_attempts}/{MAX_RECONNECT_ATTEMPTS})")
+        await asyncio.sleep(2 ** reconnect_attempts)  # 지수 백오프 (2초, 4초, 8초, 16초, 32초)
+    else:
+        log.error(f"❌ 최대 재연결 횟수 ({MAX_RECONNECT_ATTEMPTS}회) 초과! 봇을 재시작하세요.")
+
 async def load_cogs():
     """Cog 비동기 로드"""
     cogs_dir = os.path.join(directory, 'cogs')
@@ -116,10 +140,33 @@ async def load_cogs():
                 log.error(f"❌ Cog 로드 실패 ({filename}): {e}")
 
 async def main():
-    """봇 초기화 및 실행"""
-    async with bot:
-        await load_cogs()
-        await bot.start(TOKEN)
+    """봇 초기화 및 실행 (자동 재연결 활성화)"""
+    global reconnect_attempts
+    
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            async with bot:
+                await load_cogs()
+                log.info("🚀 봇 시작...")
+                await bot.start(TOKEN)
+        except Exception as e:
+            retry_count += 1
+            log.error(f"❌ 봇 실행 오류: {e}")
+            
+            if retry_count < max_retries:
+                wait_time = 5 * retry_count
+                log.warning(f"⏳ {wait_time}초 후 재시작 시도... ({retry_count}/{max_retries})")
+                await asyncio.sleep(wait_time)
+            else:
+                log.error(f"❌ {max_retries}회 재시도 후 실패! 봇을 수동으로 재시작하세요.")
+                break
+        
+        # 정상 종료 후 재연결 시도
+        reconnect_attempts = 0
+        await asyncio.sleep(1)
 
 # 봇 토큰 입력 (환경변수에서 로드)
 TOKEN = os.getenv("DISCORD_TOKEN", "YOUR_BOT_TOKEN_HERE")
@@ -129,5 +176,4 @@ if TOKEN == "YOUR_BOT_TOKEN_HERE":
     exit(1)
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
