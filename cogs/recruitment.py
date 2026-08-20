@@ -113,7 +113,7 @@ class BattleView(discord.ui.View):
             self.save_players()
             await interaction.message.edit(embed=self.create_embed())
             await interaction.response.send_message(
-                f"참여가 완료되었습니다! ({empty_index + 1}번 슬롯)", ephemeral=True, delete_after=10
+                f"참여가 완료되었습니다! ({empty_index + 1}번 슬롯)", ephemeral=True
             )
         except ValueError:
             await interaction.response.send_message(
@@ -380,6 +380,7 @@ class SettingsView(discord.ui.View):
             description="아래 드롭다운에서 게임할 음성 채널을 선택하세요!",
             color=discord.Color.blue(),
         )
+        # 음성 채널 선택 후 자동 삭제 (ephemeral=True)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 class DeleteRecruitmentSelect(discord.ui.Select):
@@ -495,7 +496,7 @@ class Recruitment(commands.Cog):
             else:
                 player_type = "스쿼드"
             
-            # 설정 완료 메시지 (본인만 봄)
+            # 설정 완료 메시지 (본인만 봄) - 5초 후 자동 삭제
             embed = discord.Embed(
                 title="✅ 구인이 시작되었습니다!",
                 description=f"**게임 시간**: {self.recruitment_settings.get('game_time', '미정')}\n"
@@ -506,7 +507,7 @@ class Recruitment(commands.Cog):
                 color=discord.Color.green(),
             )
             msg = await interaction.followup.send(embed=embed, ephemeral=True)
-            await msg.delete(delay=10)
+            await msg.delete(delay=5)
             
             # 구인 메시지와 설정 메시지 ID 매핑 저장
             recruitment_messages[message.id] = {
@@ -527,7 +528,8 @@ class Recruitment(commands.Cog):
                            "   • 멘션 보내기 ✅",
                 color=discord.Color.red(),
             )
-            await interaction.followup.send(embed=embed, ephemeral=True, delete_after=10)
+            msg = await interaction.followup.send(embed=embed, ephemeral=True)
+            await msg.delete(delay=10)
         
         except discord.NotFound:
             # 채널을 찾을 수 없음
@@ -537,7 +539,8 @@ class Recruitment(commands.Cog):
                            "채널이 삭제되었거나 접근할 수 없을 수 있습니다.",
                 color=discord.Color.red(),
             )
-            await interaction.followup.send(embed=embed, ephemeral=True, delete_after=10)
+            msg = await interaction.followup.send(embed=embed, ephemeral=True)
+            await msg.delete(delay=10)
         
         except Exception as e:
             # 기타 오류
@@ -546,7 +549,8 @@ class Recruitment(commands.Cog):
                 description=f"구인 메시지 발송 중 오류가 발생했습니다:\n\n`{str(e)}`",
                 color=discord.Color.red(),
             )
-            await interaction.followup.send(embed=embed, ephemeral=True, delete_after=10)
+            msg = await interaction.followup.send(embed=embed, ephemeral=True)
+            await msg.delete(delay=10)
             print(f"❌ 구인 시작 오류: {e}")
 
     @discord.app_commands.command(name="삭제", description="진행 중인 구인 메시지 삭제")
@@ -630,6 +634,7 @@ class Recruitment(commands.Cog):
                 description="선택한 구인 메시지와 설정이 모두 삭제되었습니다.",
                 color=discord.Color.green(),
             )
+            # 삭제 완료 메시지 - 선택 후 자동 삭제
             await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=5)
             
         except Exception as e:
