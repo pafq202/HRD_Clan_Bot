@@ -225,7 +225,7 @@ class GameTimeModal(discord.ui.Modal, title="게임 시간 설정"):
         )
 
 class GameTypeModal(discord.ui.Modal, title="게임 종류 설정"):
-    """게임 종류 입력 모달"""
+    """��임 종류 입력 모달"""
     game_type = discord.ui.TextInput(
         label="게임 종류",
         placeholder="예: 일반, 경쟁, 미니게임, 커스텀 등",
@@ -292,7 +292,7 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
                 self.cog.recruitment_settings["game_type"] != "미정" and
                 self.cog.recruitment_settings["player_count"] > 0 and
                 self.cog.recruitment_settings["voice_channel"] != "미정"):
-                await self.cog.start_recruitment(interaction, self.cog.settings_message_id)
+                await self.cog.start_recruitment(interaction, self.cog.settings_message_id, self.cog.voice_channel_message_id)
         
         except ValueError:
             await interaction.response.send_message(
@@ -346,7 +346,7 @@ class VoiceChannelSelect(discord.ui.Select):
                 self.cog.recruitment_settings["game_type"] != "미정" and
                 self.cog.recruitment_settings["player_count"] > 0 and
                 self.cog.recruitment_settings["voice_channel"] != "미정"):
-                await self.cog.start_recruitment(interaction, self.cog.settings_message_id)
+                await self.cog.start_recruitment(interaction, self.cog.settings_message_id, self.cog.voice_channel_message_id)
 
 class VoiceChannelView(discord.ui.View):
     """음성 채널 선택 뷰"""
@@ -380,8 +380,11 @@ class SettingsView(discord.ui.View):
             description="아래 드롭다운에서 게임할 음성 채널을 선택하세요!",
             color=discord.Color.blue(),
         )
-        # 음성 채널 선택 후 자동 삭제 (ephemeral=True)
+        # 음성 채널 선택 창 표시
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        
+        # 음성 채널 선택 창의 메시지 ID 저장
+        self.cog.voice_channel_message_id = (await interaction.original_response()).id
 
 class DeleteRecruitmentSelect(discord.ui.Select):
     """삭제할 구인 선택 드롭다운"""
@@ -428,6 +431,7 @@ class Recruitment(commands.Cog):
             "voice_channel": "미정"
         }
         self.settings_message_id = None  # 설정 메뉴 메시지 ID 저장
+        self.voice_channel_message_id = None  # 음성 채널 선택 메시지 ID 저장
 
     @discord.app_commands.command(name="양식", description="배틀그라운드 구인 설정")
     async def recruitment_settings_slash(self, interaction: discord.Interaction):
@@ -443,6 +447,7 @@ class Recruitment(commands.Cog):
             "player_count": 0,
             "voice_channel": "미정"
         }
+        self.voice_channel_message_id = None
         
         embed = discord.Embed(
             title="⚙️ 배틀그라운드 구인 설정",
@@ -461,7 +466,7 @@ class Recruitment(commands.Cog):
         # 설정 메뉴 메시지 ID 저장
         self.settings_message_id = (await interaction.original_response()).id
 
-    async def start_recruitment(self, interaction: discord.Interaction, settings_message_id: int = None):
+    async def start_recruitment(self, interaction: discord.Interaction, settings_message_id: int = None, voice_channel_message_id: int = None):
         """구인 메시지 자동 발송"""
         try:
             await interaction.response.defer()
@@ -497,6 +502,14 @@ class Recruitment(commands.Cog):
                 try:
                     settings_msg = await channel.fetch_message(settings_message_id)
                     await settings_msg.delete()
+                except discord.NotFound:
+                    pass
+            
+            # 음성 채널 선택 메시지 삭제
+            if voice_channel_message_id:
+                try:
+                    voice_msg = await channel.fetch_message(voice_channel_message_id)
+                    await voice_msg.delete()
                 except discord.NotFound:
                     pass
             
