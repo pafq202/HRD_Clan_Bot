@@ -292,7 +292,7 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
                 self.cog.recruitment_settings["game_type"] != "미정" and
                 self.cog.recruitment_settings["player_count"] > 0 and
                 self.cog.recruitment_settings["voice_channel"] != "미정"):
-                await self.cog.start_recruitment(interaction)
+                await self.cog.start_recruitment(interaction, self.cog.settings_message_id)
         
         except ValueError:
             await interaction.response.send_message(
@@ -346,7 +346,7 @@ class VoiceChannelSelect(discord.ui.Select):
                 self.cog.recruitment_settings["game_type"] != "미정" and
                 self.cog.recruitment_settings["player_count"] > 0 and
                 self.cog.recruitment_settings["voice_channel"] != "미정"):
-                await self.cog.start_recruitment(interaction)
+                await self.cog.start_recruitment(interaction, self.cog.settings_message_id)
 
 class VoiceChannelView(discord.ui.View):
     """음성 채널 선택 뷰"""
@@ -427,6 +427,7 @@ class Recruitment(commands.Cog):
             "player_count": 0,
             "voice_channel": "미정"
         }
+        self.settings_message_id = None  # 설정 메뉴 메시지 ID 저장
 
     @discord.app_commands.command(name="양식", description="배틀그라운드 구인 설정")
     async def recruitment_settings_slash(self, interaction: discord.Interaction):
@@ -456,8 +457,11 @@ class Recruitment(commands.Cog):
         
         view = SettingsView(cog=self)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        
+        # 설정 메뉴 메시지 ID 저장
+        self.settings_message_id = (await interaction.original_response()).id
 
-    async def start_recruitment(self, interaction: discord.Interaction):
+    async def start_recruitment(self, interaction: discord.Interaction, settings_message_id: int = None):
         """구인 메시지 자동 발송"""
         try:
             await interaction.response.defer()
@@ -488,6 +492,14 @@ class Recruitment(commands.Cog):
             view.message_id = message.id
             view.save_players()
             
+            # 설정 메뉴 메시지 삭제
+            if settings_message_id:
+                try:
+                    settings_msg = await channel.fetch_message(settings_message_id)
+                    await settings_msg.delete()
+                except discord.NotFound:
+                    pass
+            
             # 인원 타입 결정
             if player_count == 2:
                 player_type = "듀오"
@@ -495,19 +507,6 @@ class Recruitment(commands.Cog):
                 player_type = "트리오"
             else:
                 player_type = "스쿼드"
-            
-            # 설정 완료 메시지 (본인만 봄) - 5초 후 자동 삭제
-            embed = discord.Embed(
-                title="✅ 구인이 시작되었습니다!",
-                description=f"**게임 시간**: {self.recruitment_settings.get('game_time', '미정')}\n"
-                           f"**게임 종류**: {self.recruitment_settings.get('game_type', '미정')}\n"
-                           f"**모집 인원**: {player_count}명({player_type})\n"
-                           f"**음성 채널**: {self.recruitment_settings.get('voice_channel', '미정')}\n\n"
-                           f"삭제하려면 `/삭제` 명령어를 사용하세요.",
-                color=discord.Color.green(),
-            )
-            msg = await interaction.followup.send(embed=embed, ephemeral=True)
-            await msg.delete(delay=5)
             
             # 구인 메시지와 설정 메시지 ID 매핑 저장
             recruitment_messages[message.id] = {
