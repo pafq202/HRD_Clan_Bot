@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 import os
 import json
+import asyncio
 from datetime import datetime, timezone
 from typing import Optional, List, Dict
 from config.config import get_config
@@ -550,7 +551,11 @@ class Recruitment(commands.Cog):
                            f"💬 **남은 자리**: {player_count - 1}명",
                 color=discord.Color.green(),
             )
-            await interaction.followup.send(embed=embed, ephemeral=True, delete_after=5)
+            msg = await interaction.followup.send(embed=embed, ephemeral=True)
+            
+            # 5초 후 메시지 삭제
+            await asyncio.sleep(5)
+            await msg.delete()
         
         except discord.Forbidden:
             # 권한 없음 에러
@@ -566,7 +571,8 @@ class Recruitment(commands.Cog):
                 color=discord.Color.red(),
             )
             msg = await interaction.followup.send(embed=embed, ephemeral=True)
-            await msg.delete(delay=10)
+            await asyncio.sleep(10)
+            await msg.delete()
         
         except discord.NotFound:
             # 채널을 찾을 수 없음
@@ -577,7 +583,8 @@ class Recruitment(commands.Cog):
                 color=discord.Color.red(),
             )
             msg = await interaction.followup.send(embed=embed, ephemeral=True)
-            await msg.delete(delay=10)
+            await asyncio.sleep(10)
+            await msg.delete()
         
         except Exception as e:
             # 기타 오류
@@ -587,7 +594,8 @@ class Recruitment(commands.Cog):
                 color=discord.Color.red(),
             )
             msg = await interaction.followup.send(embed=embed, ephemeral=True)
-            await msg.delete(delay=10)
+            await asyncio.sleep(10)
+            await msg.delete()
             print(f"❌ 구인 시작 오류: {e}")
 
     @discord.app_commands.command(name="삭제", description="진행 중인 구인 메시지 삭제")
@@ -671,8 +679,10 @@ class Recruitment(commands.Cog):
                 description="선택한 구인 메시지와 설정이 모두 삭제되었습니다.",
                 color=discord.Color.green(),
             )
-            # 삭제 완료 메시지 - 선택 후 자동 삭제
-            await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=5)
+            # 삭제 완료 메시지
+            msg = await interaction.response.send_message(embed=embed, ephemeral=True)
+            await asyncio.sleep(5)
+            await msg.delete()
             
         except Exception as e:
             print(f"❌ 구인 삭제 중 오류: {e}")
@@ -681,7 +691,9 @@ class Recruitment(commands.Cog):
                 description=f"구인 삭제 중 오류가 발생했습니다: {e}",
                 color=discord.Color.red(),
             )
-            await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=5)
+            msg = await interaction.response.send_message(embed=embed, ephemeral=True)
+            await asyncio.sleep(5)
+            await msg.delete()
 
     @discord.app_commands.command(name="초대링크", description="HRD Clan Bot 초대 링크 공유")
     @discord.app_commands.check(is_admin_or_owner)
