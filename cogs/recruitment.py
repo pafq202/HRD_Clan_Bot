@@ -225,7 +225,7 @@ class GameTimeModal(discord.ui.Modal, title="게임 시간 설정"):
         )
 
 class GameTypeModal(discord.ui.Modal, title="게임 종류 설정"):
-    """��임 종류 입력 모달"""
+    """게임 종류 입력 모달"""
     game_type = discord.ui.TextInput(
         label="게임 종류",
         placeholder="예: 일반, 경쟁, 미니게임, 커스텀 등",
@@ -287,7 +287,7 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
                 delete_after=3
             )
             
-            # 세 가지 설정이 모두 완료되었는지 확인
+            # 네 가지 설정이 모두 완료되었는지 확인
             if (self.cog.recruitment_settings["game_time"] != "미정" and
                 self.cog.recruitment_settings["game_type"] != "미정" and
                 self.cog.recruitment_settings["player_count"] > 0 and
@@ -383,8 +383,12 @@ class SettingsView(discord.ui.View):
         # 음성 채널 선택 창 표시
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
         
-        # 음성 채널 선택 창의 메시지 ID 저장
-        self.cog.voice_channel_message_id = (await interaction.original_response()).id
+        # 음성 채널 선택 창의 메시지 ID 저장 (즉시)
+        try:
+            msg = await interaction.original_response()
+            self.cog.voice_channel_message_id = msg.id
+        except:
+            pass
 
 class DeleteRecruitmentSelect(discord.ui.Select):
     """삭제할 구인 선택 드롭다운"""
@@ -463,8 +467,12 @@ class Recruitment(commands.Cog):
         view = SettingsView(cog=self)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
         
-        # 설정 메뉴 메시지 ID 저장
-        self.settings_message_id = (await interaction.original_response()).id
+        # 설정 메뉴 메시지 ID 저장 (즉시)
+        try:
+            msg = await interaction.original_response()
+            self.settings_message_id = msg.id
+        except:
+            pass
 
     async def start_recruitment(self, interaction: discord.Interaction, settings_message_id: int = None, voice_channel_message_id: int = None):
         """구인 메시지 자동 발송"""
