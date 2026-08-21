@@ -339,11 +339,6 @@ class VoiceChannelSelect(discord.ui.Select):
         
         if channel:
             self.cog.recruitment_settings["voice_channel"] = f"#{channel.name}"
-            await interaction.response.send_message(
-                f"✅ 음성 채널이 '#{channel.name}'로 설정되었습니다!",
-                ephemeral=True,
-                delete_after=3
-            )
             
             # 음성 채널 선택 창 삭제
             if self.voice_channel_interaction:
@@ -534,7 +529,7 @@ class Recruitment(commands.Cog):
                 "settings": self.settings_interaction.id if self.settings_interaction else None
             }
             
-            # 원래 설정 메뉴 상호작용 편집으로 설정 메뉴 숨기기 (이모지 추가)
+            # 원래 설정 메뉴 상호작용 편집으로 설정 메뉴 숨기기
             if self.settings_interaction:
                 try:
                     await self.settings_interaction.edit_original_response(
@@ -547,23 +542,6 @@ class Recruitment(commands.Cog):
                     )
                 except:
                     pass
-            
-            # 성공 메시지
-            embed = discord.Embed(
-                title="✅ 구인이 시작되었습니다!",
-                description=f"**{player_type}** 구인이 시작되었습니다!\n"
-                           f"게임 시간: {self.recruitment_settings.get('game_time')}\n"
-                           f"게임 종류: {self.recruitment_settings.get('game_type')}\n"
-                           f"음성 채널: {self.recruitment_settings.get('voice_channel')}\n\n"
-                           f"👤 **리더**: {self.recruiter.mention}\n"
-                           f"💬 **남은 자리**: {player_count - 1}명",
-                color=discord.Color.green(),
-            )
-            msg = await interaction.followup.send(embed=embed, ephemeral=True)
-            
-            # 5초 후 메시지 삭제
-            await asyncio.sleep(5)
-            await msg.delete()
         
         except discord.Forbidden:
             # 권한 없음 에러
@@ -682,26 +660,8 @@ class Recruitment(commands.Cog):
                 del battle_data[message_id]
                 save_battle_data(battle_data)
             
-            embed = discord.Embed(
-                title="✅ 구인이 삭제되었습니다!",
-                description="선택한 구인 메시지와 설정이 모두 삭제되었습니다.",
-                color=discord.Color.green(),
-            )
-            # 삭제 완료 메시지
-            msg = await interaction.response.send_message(embed=embed, ephemeral=True)
-            await asyncio.sleep(5)
-            await msg.delete()
-            
         except Exception as e:
             print(f"❌ 구인 삭제 중 오류: {e}")
-            embed = discord.Embed(
-                title="❌ 오류 발생",
-                description=f"구인 삭제 중 오류가 발생했습니다: {e}",
-                color=discord.Color.red(),
-            )
-            msg = await interaction.response.send_message(embed=embed, ephemeral=True)
-            await asyncio.sleep(5)
-            await msg.delete()
 
     @discord.app_commands.command(name="초대링크", description="HRD Clan Bot 초대 링크 공유")
     @discord.app_commands.check(is_admin_or_owner)
