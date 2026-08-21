@@ -426,9 +426,9 @@ class Recruitment(commands.Cog):
             "player_count": 0,
             "voice_channel": "미정"
         }
-        self.settings_message_id = None  # 설정 메뉴 메시지 ID 저장
-        self.interaction_channel = None  # 상호작용 채널 저장
+        self.settings_interaction = None  # 설정 상호작용 저장
         self.recruiter = None  # 구인 설정자 저장
+        self.interaction_channel = None  # 상호작용 채널 저장
 
     def is_recruitment_complete(self) -> bool:
         """모든 설정이 완료되었는지 확인"""
@@ -458,6 +458,7 @@ class Recruitment(commands.Cog):
             "player_count": 0,
             "voice_channel": "미정"
         }
+        self.settings_interaction = interaction  # 원래 상호작용 저장
         self.interaction_channel = interaction.channel
         self.recruiter = interaction.user  # 구인 설정자 저장
         
@@ -474,13 +475,6 @@ class Recruitment(commands.Cog):
         
         view = SettingsView(cog=self)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-        
-        # 설정 메뉴 메시지 ID 저장
-        try:
-            msg = await interaction.original_response()
-            self.settings_message_id = msg.id
-        except:
-            pass
 
     async def start_recruitment(self, interaction: discord.Interaction):
         """구인 메시지 자동 발송"""
@@ -529,15 +523,21 @@ class Recruitment(commands.Cog):
             # 구인 메시지와 설정 메시지 ID 매핑 저장
             recruitment_messages[message.id] = {
                 "recruitment": message.id,
-                "settings": self.settings_message_id
+                "settings": self.settings_interaction.id if self.settings_interaction else None
             }
             
-            # 설정 메뉴 메시지 삭제
-            if self.settings_message_id:
+            # 원래 설정 메뉴 상호작용 편집으로 설정 메뉴 숨기기 (이모지 추가)
+            if self.settings_interaction:
                 try:
-                    settings_msg = await channel.fetch_message(self.settings_message_id)
-                    await settings_msg.delete()
-                except discord.NotFound:
+                    await self.settings_interaction.edit_original_response(
+                        embed=discord.Embed(
+                            title="✅ 구인이 생성되었습니다!",
+                            description="설정이 완료되어 구인 메시지가 채널에 발송되었습니다.",
+                            color=discord.Color.green(),
+                        ),
+                        view=None  # 버튼 제거
+                    )
+                except:
                     pass
             
             # 성공 메시지
