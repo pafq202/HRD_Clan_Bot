@@ -306,9 +306,10 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
 
 class VoiceChannelSelect(discord.ui.Select):
     """음성 채널 선택 드롭다운"""
-    def __init__(self, cog, guild: discord.Guild):
+    def __init__(self, cog, guild: discord.Guild, voice_channel_interaction: discord.Interaction = None):
         self.cog = cog
         self.guild = guild
+        self.voice_channel_interaction = voice_channel_interaction  # 음성채널 선택 창 interaction 저장
         
         # 서버의 모든 음성 채널 가져오기
         voice_channels = [channel for channel in guild.channels if isinstance(channel, discord.VoiceChannel)]
@@ -344,14 +345,21 @@ class VoiceChannelSelect(discord.ui.Select):
                 delete_after=3
             )
             
+            # 음성 채널 선택 창 삭제
+            if self.voice_channel_interaction:
+                try:
+                    await self.voice_channel_interaction.delete_original_response()
+                except:
+                    pass
+            
             # 설정 완료 후 자동 시작 확인
             await self.cog.check_and_start_recruitment(interaction)
 
 class VoiceChannelView(discord.ui.View):
     """음성 채널 선택 뷰"""
-    def __init__(self, cog, guild: discord.Guild):
+    def __init__(self, cog, guild: discord.Guild, voice_channel_interaction: discord.Interaction = None):
         super().__init__(timeout=300)
-        self.add_item(VoiceChannelSelect(cog, guild))
+        self.add_item(VoiceChannelSelect(cog, guild, voice_channel_interaction))
 
 class SettingsView(discord.ui.View):
     """게임 설정 입력 버튼 뷰"""
@@ -373,7 +381,7 @@ class SettingsView(discord.ui.View):
     
     @discord.ui.button(label="채널 선택", style=discord.ButtonStyle.blurple, custom_id="channel_select_btn")
     async def channel_select_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
-        view = VoiceChannelView(self.cog, interaction.guild)
+        view = VoiceChannelView(self.cog, interaction.guild, interaction)
         embed = discord.Embed(
             title="🎧 음성 채널 선택",
             description="아래 드롭다운에서 게임할 음성 채널을 선택하세요!",
