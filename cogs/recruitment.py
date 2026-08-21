@@ -239,7 +239,6 @@ class GameTimeModal(discord.ui.Modal, title="게임 시간 설정"):
         await interaction.response.send_message(
             f"✅ 게임 시간이 '{self.game_time.value}'로 설정되었습니다!",
             ephemeral=True,
-            delete_after=3,
         )
         await self.cog.check_and_start_recruitment(interaction)
 
@@ -262,7 +261,6 @@ class GameTypeModal(discord.ui.Modal, title="게임 종류 설정"):
         await interaction.response.send_message(
             f"✅ 게임 종류가 '{self.game_type.value}'로 설정되었습니다!",
             ephemeral=True,
-            delete_after=3,
         )
         await self.cog.check_and_start_recruitment(interaction)
 
@@ -304,7 +302,6 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
             await interaction.response.send_message(
                 f"✅ 모집 인원이 {count}명({player_type})으로 설정되었습니다!",
                 ephemeral=True,
-                delete_after=3,
             )
             await self.cog.check_and_start_recruitment(interaction)
 
@@ -501,6 +498,13 @@ class Recruitment(commands.Cog):
         channel = self.interaction_channel or interaction.channel
         player_count = self.recruitment_settings.get("player_count", 4)
 
+        if self.settings_interaction:
+            try:
+                await self.settings_interaction.delete_original_response()
+            except Exception:
+                pass
+            self.settings_interaction = None
+
         view = BattleView(
             game_time=self.recruitment_settings.get("game_time", "미정"),
             game_type=self.recruitment_settings.get("game_type", "미정"),
@@ -533,19 +537,6 @@ class Recruitment(commands.Cog):
                 "recruitment": message.id,
                 "settings": self.settings_interaction.id if self.settings_interaction else None,
             }
-
-            if self.settings_interaction:
-                try:
-                    await self.settings_interaction.edit_original_response(
-                        embed=discord.Embed(
-                            title="✅ 구인이 생성되었습니다!",
-                            description="설정이 완료되어 구인 메시지가 채널에 발송되었습니다.",
-                            color=discord.Color.green(),
-                        ),
-                        view=None,
-                    )
-                except Exception:
-                    pass
 
         except discord.Forbidden:
             embed = discord.Embed(
