@@ -652,6 +652,11 @@ class Recruitment(commands.Cog):
                 del recruitment_messages[message_id_int]
 
             try:
+                await interaction.delete_original_response()
+            except Exception:
+                pass
+
+            try:
                 if list_message_id > 0:
                     list_msg = await channel.fetch_message(list_message_id)
                     await list_msg.delete()
