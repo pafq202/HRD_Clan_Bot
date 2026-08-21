@@ -236,6 +236,7 @@ class GameTimeModal(discord.ui.Modal, title="게임 시간 설정"):
 
     async def on_submit(self, interaction: discord.Interaction):
         self.cog.recruitment_settings["game_time"] = self.game_time.value
+        self.cog.setting_notifications.append(interaction)
         await interaction.response.send_message(
             f"✅ 게임 시간이 '{self.game_time.value}'로 설정되었습니다!",
             ephemeral=True,
@@ -258,6 +259,7 @@ class GameTypeModal(discord.ui.Modal, title="게임 종류 설정"):
 
     async def on_submit(self, interaction: discord.Interaction):
         self.cog.recruitment_settings["game_type"] = self.game_type.value
+        self.cog.setting_notifications.append(interaction)
         await interaction.response.send_message(
             f"✅ 게임 종류가 '{self.game_type.value}'로 설정되었습니다!",
             ephemeral=True,
@@ -283,6 +285,7 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
             count = int(self.player_count.value)
 
             if count < 2 or count > 4:
+                self.cog.setting_notifications.append(interaction)
                 await interaction.response.send_message(
                     "❌ 인원은 2명(듀오) ~ 4명(스쿼드) 사이여야 합니다!",
                     ephemeral=True,
@@ -299,6 +302,7 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
             else:
                 player_type = "스쿼드"
 
+            self.cog.setting_notifications.append(interaction)
             await interaction.response.send_message(
                 f"✅ 모집 인원이 {count}명({player_type})으로 설정되었습니다!",
                 ephemeral=True,
@@ -306,6 +310,7 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
             await self.cog.check_and_start_recruitment(interaction)
 
         except ValueError:
+            self.cog.setting_notifications.append(interaction)
             await interaction.response.send_message(
                 "❌ 숫자를 입력해주세요! (2 또는 3 또는 4)",
                 ephemeral=True,
@@ -442,6 +447,7 @@ class Recruitment(commands.Cog):
         self.settings_interaction = None
         self.recruiter = None
         self.interaction_channel = None
+        self.setting_notifications = []
 
     def is_recruitment_complete(self) -> bool:
         """모든 설정이 완료되었는지 확인"""
@@ -457,6 +463,15 @@ class Recruitment(commands.Cog):
         if self.is_recruitment_complete():
             await self.start_recruitment(interaction)
 
+    async def clear_setting_notifications(self):
+        """설정 완료 메시지들 삭제"""
+        for notification_interaction in list(self.setting_notifications):
+            try:
+                await notification_interaction.delete_original_response()
+            except Exception:
+                pass
+        self.setting_notifications.clear()
+
     @discord.app_commands.command(name="양식", description="배틀그라운드 구인 설정")
     async def recruitment_settings_slash(self, interaction: discord.Interaction):
         """
@@ -470,6 +485,7 @@ class Recruitment(commands.Cog):
             "player_count": 0,
             "voice_channel": "미정",
         }
+        self.setting_notifications = []
         self.settings_interaction = interaction
         self.interaction_channel = interaction.channel
         self.recruiter = interaction.user
@@ -498,12 +514,15 @@ class Recruitment(commands.Cog):
         channel = self.interaction_channel or interaction.channel
         player_count = self.recruitment_settings.get("player_count", 4)
 
-        if self.settings_interaction:
+        settings_interaction = self.settings_interaction
+
+        if settings_interaction:
             try:
-                await self.settings_interaction.delete_original_response()
+                await settings_interaction.delete_original_response()
             except Exception:
                 pass
-            self.settings_interaction = None
+        await self.clear_setting_notifications()
+        self.settings_interaction = None
 
         view = BattleView(
             game_time=self.recruitment_settings.get("game_time", "미정"),
@@ -535,7 +554,7 @@ class Recruitment(commands.Cog):
 
             recruitment_messages[message.id] = {
                 "recruitment": message.id,
-                "settings": self.settings_interaction.id if self.settings_interaction else None,
+                "settings": settings_interaction.id if settings_interaction else None,
             }
 
         except discord.Forbidden:
