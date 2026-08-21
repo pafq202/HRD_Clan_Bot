@@ -38,10 +38,17 @@ def _is_same_player(player, user: discord.User) -> bool:
 
 
 def _normalize_players(players: List[Optional[object]], max_players: int) -> List[Optional[object]]:
-    """players 길이를 최대 인원에 맞게 정규화"""
+    """players를 최대 인원 기준으로 정규화"""
     normalized = list(players or [])[:max_players]
     normalized.extend([None] * (max_players - len(normalized)))
     return normalized
+
+
+def _get_battle_data_path() -> str:
+    """배틀 데이터 파일 경로 반환"""
+    data_dir = os.path.join(directory, "data")
+    os.makedirs(data_dir, exist_ok=True)
+    return os.path.join(data_dir, "pending_recruitment.json")
 
 
 # 관리자 또는 서버 주인 권한 체크
@@ -54,16 +61,22 @@ async def is_admin_or_owner(interaction: discord.Interaction) -> bool:
 
 class BattleView(discord.ui.View):
     """참여 인원을 관리하는 뷰"""
-    def __init__(self, message_id: int = None, game_time: str = "미정", game_type: str = "미정", max_players: int = 4, voice_channel: str = "미정"):
+    def __init__(
+        self,
+        message_id: int = None,
+        game_time: str = "미정",
+        game_type: str = "미정",
+        max_players: int = 4,
+        voice_channel: str = "미정",
+    ):
         super().__init__(timeout=None)
         self.message_id = message_id
         self.game_time = game_time
         self.game_type = game_type
         self.max_players = max_players
         self.voice_channel = voice_channel
-        self.players = [None] * max_players  # 설정된 최대 인원만큼 자리 생성
+        self.players = [None] * max_players
 
-        # 저장된 데이터가 있으면 로드
         if message_id:
             battle_data = load_battle_data()
             if str(message_id) in battle_data:
@@ -91,12 +104,11 @@ class BattleView(discord.ui.View):
             + "\n".join(player_lines)
         )
 
-        embed = discord.Embed(
+        return discord.Embed(
             title="배틀그라운드 스쿼드 모집",
             description=description,
             color=discord.Color.blue(),
         )
-        return embed
 
     def save_players(self):
         """현재 참여 인원을 데이터베이스에 저장"""
@@ -167,10 +179,7 @@ class BattleView(discord.ui.View):
 
 def load_battle_data() -> dict:
     """저장된 배틀 데이터 로드"""
-    data_dir = os.path.join(directory, "data")
-    data_file = os.path.join(data_dir, "pending_recruitment.json")
-
-    os.makedirs(data_dir, exist_ok=True)
+    data_file = _get_battle_data_path()
 
     if not os.path.exists(data_file):
         return {}
@@ -185,10 +194,7 @@ def load_battle_data() -> dict:
 
 def save_battle_data(data: dict):
     """배틀 데이터 저장"""
-    data_dir = os.path.join(directory, "data")
-    data_file = os.path.join(data_dir, "pending_recruitment.json")
-
-    os.makedirs(data_dir, exist_ok=True)
+    data_file = _get_battle_data_path()
 
     try:
         with open(data_file, "w", encoding="utf-8") as f:
@@ -235,7 +241,6 @@ class GameTimeModal(discord.ui.Modal, title="게임 시간 설정"):
             ephemeral=True,
             delete_after=3,
         )
-
         await self.cog.check_and_start_recruitment(interaction)
 
 
@@ -259,7 +264,6 @@ class GameTypeModal(discord.ui.Modal, title="게임 종류 설정"):
             ephemeral=True,
             delete_after=3,
         )
-
         await self.cog.check_and_start_recruitment(interaction)
 
 
@@ -302,7 +306,6 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
                 ephemeral=True,
                 delete_after=3,
             )
-
             await self.cog.check_and_start_recruitment(interaction)
 
         except ValueError:
@@ -321,7 +324,6 @@ class VoiceChannelSelect(discord.ui.Select):
         self.voice_channel_interaction = voice_channel_interaction
 
         voice_channels = [channel for channel in guild.channels if isinstance(channel, discord.VoiceChannel)]
-
         options = [
             discord.SelectOption(label=f"🎮 {channel.name}", value=str(channel.id))
             for channel in voice_channels
