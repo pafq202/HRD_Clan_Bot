@@ -151,7 +151,7 @@ class BattleView(discord.ui.View):
         self.save_players()
         await interaction.message.edit(embed=self.create_embed())
         await interaction.response.send_message(
-            f"참여가 완료되었습니다! ({empty_index + 1}번 슬롯)", ephemeral=True
+            f"참여가 완료되었습니다! ({empty_index + 1}번 슬롯)", ephemeral=True, delete_after=3
         )
 
     @discord.ui.button(
