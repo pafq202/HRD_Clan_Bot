@@ -427,6 +427,7 @@ class Recruitment(commands.Cog):
         }
         self.settings_message_id = None  # 설정 메뉴 메시지 ID 저장
         self.interaction_channel = None  # 상호작용 채널 저장
+        self.recruiter = None  # 구인 설정자 저장
 
     def is_recruitment_complete(self) -> bool:
         """모든 설정이 완료되었는지 확인"""
@@ -457,6 +458,7 @@ class Recruitment(commands.Cog):
             "voice_channel": "미정"
         }
         self.interaction_channel = interaction.channel
+        self.recruiter = interaction.user  # 구인 설정자 저장
         
         embed = discord.Embed(
             title="⚙️ 배틀그라운드 구인 설정",
@@ -507,6 +509,10 @@ class Recruitment(commands.Cog):
             else:
                 player_type = "스쿼드"
             
+            # 구인 설정자를 1번 슬롯에 자동 할당
+            if self.recruiter:
+                view.players[0] = self.recruiter
+            
             # @here 태그와 함께 메시지 발송
             message = await channel.send(
                 "@here 🎮 배틀그라운드 스쿼드 구인이 시작되었습니다! "
@@ -539,7 +545,9 @@ class Recruitment(commands.Cog):
                 description=f"**{player_type}** 구인이 시작되었습니다!\n"
                            f"게임 시간: {self.recruitment_settings.get('game_time')}\n"
                            f"게임 종류: {self.recruitment_settings.get('game_type')}\n"
-                           f"음성 채널: {self.recruitment_settings.get('voice_channel')}",
+                           f"음성 채널: {self.recruitment_settings.get('voice_channel')}\n\n"
+                           f"👤 **리더**: {self.recruiter.mention}\n"
+                           f"💬 **남은 자리**: {player_count - 1}명",
                 color=discord.Color.green(),
             )
             await interaction.followup.send(embed=embed, ephemeral=True, delete_after=5)
