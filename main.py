@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import logging
 import asyncio
 from utils import server_logger
+import time
 
 # 환경변수 로드
 load_dotenv()
@@ -94,9 +95,9 @@ async def on_app_command_error(interaction: discord.Interaction, error: discord.
         embed = discord.Embed(
             title="❌ 권한이 없습니다",
             description="이 명령어를 사용할 권한이 없습니다.\n\n"
-                       "필요 권한:\n"
-                       "• 서버 주인 또는\n"
-                       "• 관리자 권한",
+                        "필요 권한:\n"
+                        "• 서버 주인 또는\n"
+                        "• 관리자 권한",
             color=discord.Color.red(),
         )
         await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=10)
@@ -125,7 +126,7 @@ async def on_error(event, *args, **kwargs):
         log.warning(f"⏳ 자동 재연결 시도 ({reconnect_attempts}/{MAX_RECONNECT_ATTEMPTS})")
         await asyncio.sleep(2 ** reconnect_attempts)  # 지수 백오프 (2초, 4초, 8초, 16초, 32초)
     else:
-        log.error(f"❌ 최대 재연결 횟수 ({MAX_RECONNECT_ATTEMPTS}회) 초과! 봇을 재시작하세요.")
+        log.error(f"❌ 최대 재연결 횟수 ({MAX_RECONNECT_ATTEMPTS}회 초과! 봇을 재시작하세요.")
 
 async def load_cogs():
     """Cog 비동기 로드"""
@@ -173,7 +174,13 @@ TOKEN = os.getenv("DISCORD_TOKEN", "YOUR_BOT_TOKEN_HERE")
 if TOKEN == "YOUR_BOT_TOKEN_HERE":
     log.error("⚠️ 경고: DISCORD_TOKEN 환경변수가 설정되지 않았습니다!")
     log.error("📝 .env 파일을 생성하고 'DISCORD_TOKEN=your_token_here'를 추가하세요.")
-    exit(1)
+    raise SystemExit(1)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    while True:
+        try:
+            asyncio.run(main())
+            break
+        except Exception as e:
+            log.exception(f"❌ 예외 발생! 5초 후 재시작합니다: {e}")
+            time.sleep(5)
