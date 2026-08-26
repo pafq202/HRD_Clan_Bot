@@ -12,8 +12,8 @@ from utils.directory import directory
 parser = get_config("config")
 comment_parser = get_config("comment")
 
-# 현재 구인 메시지와 설정 메시지를 추적하는 딕셔너리
-recruitment_messages = {}  # {message_id: {"recruitment": message_id, "settings": message_id, "list": message_id}}
+# 현재 구인 메시지를 추적하는 딕셔너리
+recruitment_messages = {}
 
 # 초대 링크
 INVITE_LINK = "https://discord.com/oauth2/authorize?client_id=1529528450157641779"
@@ -51,7 +51,6 @@ def _get_battle_data_path() -> str:
     return os.path.join(data_dir, "pending_recruitment.json")
 
 
-# 관리자 또는 서버 주인 권한 체크
 async def is_admin_or_owner(interaction: discord.Interaction) -> bool:
     """사용자가 관리자 또는 서버 주인인지 확인"""
     if not interaction.guild:
@@ -126,25 +125,17 @@ class BattleView(discord.ui.View):
         }
         save_battle_data(battle_data)
 
-    @discord.ui.button(
-        label="참여", style=discord.ButtonStyle.green, custom_id="join_btn"
-    )
-    async def join_callback(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
+    @discord.ui.button(label="참여", style=discord.ButtonStyle.green, custom_id="join_btn")
+    async def join_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
         user = interaction.user
 
         if any(_is_same_player(player, user) for player in self.players):
-            await interaction.response.send_message(
-                "이미 참여하셨습니다!", ephemeral=True, delete_after=5
-            )
+            await interaction.response.send_message("이미 참여하셨습니다!", ephemeral=True, delete_after=5)
             return
 
         empty_index = next((index for index, player in enumerate(self.players) if player is None), None)
         if empty_index is None:
-            await interaction.response.send_message(
-                "자리가 모두 찼습니다!", ephemeral=True, delete_after=10
-            )
+            await interaction.response.send_message("자리가 모두 찼습니다!", ephemeral=True, delete_after=10)
             return
 
         self.players[empty_index] = user
@@ -154,12 +145,8 @@ class BattleView(discord.ui.View):
             f"참여가 완료되었습니다! ({empty_index + 1}번 슬롯)", ephemeral=True, delete_after=3
         )
 
-    @discord.ui.button(
-        label="참여취소", style=discord.ButtonStyle.red, custom_id="leave_btn"
-    )
-    async def leave_callback(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
+    @discord.ui.button(label="참여취소", style=discord.ButtonStyle.red, custom_id="leave_btn")
+    async def leave_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
         user = interaction.user
 
         for index, player in enumerate(self.players):
@@ -167,20 +154,15 @@ class BattleView(discord.ui.View):
                 self.players[index] = None
                 self.save_players()
                 await interaction.message.edit(embed=self.create_embed())
-                await interaction.response.send_message(
-                    "참여가 취소되었습니다.", ephemeral=True, delete_after=3
-                )
+                await interaction.response.send_message("참여가 취소되었습니다.", ephemeral=True, delete_after=3)
                 return
 
-        await interaction.response.send_message(
-            "참여 목록에 없습니다.", ephemeral=True, delete_after=5
-        )
+        await interaction.response.send_message("참여 목록에 없습니다.", ephemeral=True, delete_after=5)
 
 
 def load_battle_data() -> dict:
     """저장된 배틀 데이터 로드"""
     data_file = _get_battle_data_path()
-
     if not os.path.exists(data_file):
         return {}
 
@@ -474,11 +456,7 @@ class Recruitment(commands.Cog):
 
     @discord.app_commands.command(name="양식", description="배틀그라운드 구인 설정")
     async def recruitment_settings_slash(self, interaction: discord.Interaction):
-        """
-        슬래시 명령어: /양식
-        게임 시간, 종류, 인원, 음성 채널을 설정하여 구인 시작
-        누구나 사용 가능
-        """
+        """슬래시 명령어: /양식 - 게임 시간, 종류, 인원, 음성 채널을 설정하여 구인 시작"""
         self.recruitment_settings = {
             "game_time": "미정",
             "game_type": "미정",
@@ -513,7 +491,6 @@ class Recruitment(commands.Cog):
 
         channel = self.interaction_channel or interaction.channel
         player_count = self.recruitment_settings.get("player_count", 4)
-
         settings_interaction = self.settings_interaction
 
         if settings_interaction:
@@ -521,6 +498,7 @@ class Recruitment(commands.Cog):
                 await settings_interaction.delete_original_response()
             except Exception:
                 pass
+        
         await self.clear_setting_notifications()
         self.settings_interaction = None
 
@@ -597,11 +575,7 @@ class Recruitment(commands.Cog):
 
     @discord.app_commands.command(name="삭제", description="진행 중인 구인 메시지 삭제")
     async def delete_recruitment(self, interaction: discord.Interaction):
-        """
-        슬래시 명령어: /삭제
-        진행 중인 구인 메시지를 선택하여 삭제합니다
-        누구나 사용 가능
-        """
+        """슬래시 명령어: /삭제 - 진행 중인 구인 메시지를 선택하여 삭제"""
         battle_data = load_battle_data()
 
         if not battle_data:
@@ -610,7 +584,9 @@ class Recruitment(commands.Cog):
                 description="진행 중인 구인 메시지가 없습니다.",
                 color=discord.Color.red(),
             )
-            await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=3)
+            msg = await interaction.response.send_message(embed=embed, ephemeral=True)
+            await asyncio.sleep(3)
+            await msg.delete()
             return
 
         embed = discord.Embed(
@@ -629,8 +605,7 @@ class Recruitment(commands.Cog):
             view.children[0].list_message_id = fetched_message.id
 
     async def delete_specific_recruitment(self, interaction: discord.Interaction, message_id: str, list_message_id: int):
-        """특정 구인 메시지 삭제 (구인 메시지와 목록 메시지 모두 삭제)"""
-        # 🔴 핵심: 가장 먼저 defer() 호출!
+        """특정 구인 메시지 삭제"""
         try:
             await interaction.response.defer(ephemeral=True)
         except Exception:
@@ -653,14 +628,14 @@ class Recruitment(commands.Cog):
                 del battle_data[message_id]
                 save_battle_data(battle_data)
             
-            # 3️⃣ 목록 메시지 삭제 (현재 드롭다운 메시지)
+            # 3️⃣ 목록 메시지 삭제
             try:
                 list_msg = await interaction.original_response()
                 await list_msg.delete()
             except:
                 pass
             
-            # 4️⃣ 완료 메시지 (3초 후 자동 삭제)
+            # 4️⃣ 완료 메시지
             msg = await interaction.followup.send("✅ 구인 메시지가 삭제되었습니다!", ephemeral=True)
             await asyncio.sleep(3)
             try:
@@ -680,11 +655,7 @@ class Recruitment(commands.Cog):
     @discord.app_commands.command(name="초대링크", description="HRD Clan Bot 초대 링크 공유")
     @discord.app_commands.check(is_admin_or_owner)
     async def invite_link(self, interaction: discord.Interaction):
-        """
-        슬래시 명령어: /초대링크
-        HRD Clan Bot 초대 링크를 공유합니다
-        관리자 또는 서버 주인만 사용 가능
-        """
+        """슬래시 명령어: /초대링크 - HRD Clan Bot 초대 링크를 공유 (관리자 또는 서버 주인만 사용 가능)"""
         embed = discord.Embed(
             title="🔗 HRD Clan Bot 초대 링크",
             description="아래 링크를 클릭하여 봇을 서버에 초대하세요!\n\n"
