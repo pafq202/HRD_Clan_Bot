@@ -177,4 +177,7 @@ if TOKEN == "YOUR_BOT_TOKEN_HERE":
     raise SystemExit(1)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    while True:
+        asyncio.run(main())
+        log.info("⏳ 5초 후 봇을 재시작합니다...")
+        time.sleep(5)
