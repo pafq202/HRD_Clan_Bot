@@ -660,13 +660,20 @@ class Recruitment(commands.Cog):
             except:
                 pass
             
-            # 4️⃣ 완료 메시지
-            await interaction.followup.send("✅ 구인 메시지가 삭제되었습니다!", ephemeral=True, delete_after=3)
+            # 4️⃣ 완료 메시지 (3초 후 자동 삭제)
+            msg = await interaction.followup.send("✅ 구인 메시지가 삭제되었습니다!", ephemeral=True)
+            await asyncio.sleep(3)
+            try:
+                await msg.delete()
+            except:
+                pass
             
         except Exception as e:
             print(f"❌ 구인 삭제 중 오류: {e}")
             try:
-                await interaction.followup.send(f"❌ 오류: {str(e)}", ephemeral=True, delete_after=5)
+                msg = await interaction.followup.send(f"❌ 오류: {str(e)}", ephemeral=True)
+                await asyncio.sleep(5)
+                await msg.delete()
             except:
                 pass
 
