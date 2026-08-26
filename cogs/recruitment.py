@@ -630,16 +630,24 @@ class Recruitment(commands.Cog):
 
     async def delete_specific_recruitment(self, interaction: discord.Interaction, message_id: str, list_message_id: int):
         """특정 구인 메시지 삭제 (구인 메시지와 설정 메시지 모두 삭제)"""
+        # 🔴 핵심: 가장 먼저 defer() 호출!
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except Exception:
+            pass
+        
         try:
             channel = interaction.channel
             message_id_int = int(message_id)
-
+            
+            # 구인 메시지 삭제
             try:
                 recruitment_msg = await channel.fetch_message(message_id_int)
                 await recruitment_msg.delete()
             except discord.NotFound:
                 pass
-
+            
+            # 설정 메시지 삭제
             if message_id_int in recruitment_messages:
                 try:
                     settings_msg_id = recruitment_messages[message_id_int].get("settings")
@@ -648,28 +656,31 @@ class Recruitment(commands.Cog):
                         await settings_msg.delete()
                 except discord.NotFound:
                     pass
-
                 del recruitment_messages[message_id_int]
-
-            try:
-                await interaction.delete_original_response()
-            except Exception:
-                pass
-
+            
+            # 목록 메시지 삭제
             try:
                 if list_message_id > 0:
                     list_msg = await channel.fetch_message(list_message_id)
                     await list_msg.delete()
             except discord.NotFound:
                 pass
-
+            
+            # 데이터 저장 (가장 마지막에)
             battle_data = load_battle_data()
             if message_id in battle_data:
                 del battle_data[message_id]
                 save_battle_data(battle_data)
-
+            
+            # 완료 메시지
+            await interaction.followup.send("✅ 구인 메시지가 삭제되었습니다!", ephemeral=True, delete_after=3)
+            
         except Exception as e:
             print(f"❌ 구인 삭제 중 오류: {e}")
+            try:
+                await interaction.followup.send(f"❌ 오류: {str(e)}", ephemeral=True, delete_after=5)
+            except:
+                pass
 
     @discord.app_commands.command(name="초대링크", description="HRD Clan Bot 초대 링크 공유")
     @discord.app_commands.check(is_admin_or_owner)
