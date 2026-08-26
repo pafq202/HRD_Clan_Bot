@@ -177,10 +177,4 @@ if TOKEN == "YOUR_BOT_TOKEN_HERE":
     raise SystemExit(1)
 
 if __name__ == "__main__":
-    while True:
-        try:
-            asyncio.run(main())
-            break
-        except Exception as e:
-            log.exception(f"❌ 예외 발생! 5초 후 재시작합니다: {e}")
-            time.sleep(5)
+    asyncio.run(main())
