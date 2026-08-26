@@ -629,7 +629,7 @@ class Recruitment(commands.Cog):
             view.children[0].list_message_id = fetched_message.id
 
     async def delete_specific_recruitment(self, interaction: discord.Interaction, message_id: str, list_message_id: int):
-        """특정 구인 메시지 삭제 (구인 메시지와 설정 메시지 모두 삭제)"""
+        """특정 구인 메시지 삭제 (구인 메시지와 목록 메시지 모두 삭제)"""
         # 🔴 핵심: 가장 먼저 defer() 호출!
         try:
             await interaction.response.defer(ephemeral=True)
@@ -640,39 +640,27 @@ class Recruitment(commands.Cog):
             channel = interaction.channel
             message_id_int = int(message_id)
             
-            # 구인 메시지 삭제
+            # 1️⃣ 구인 메시지 삭제
             try:
                 recruitment_msg = await channel.fetch_message(message_id_int)
                 await recruitment_msg.delete()
             except discord.NotFound:
                 pass
             
-            # 설정 메시지 삭제
-            if message_id_int in recruitment_messages:
-                try:
-                    settings_msg_id = recruitment_messages[message_id_int].get("settings")
-                    if settings_msg_id is not None:
-                        settings_msg = await channel.fetch_message(settings_msg_id)
-                        await settings_msg.delete()
-                except discord.NotFound:
-                    pass
-                del recruitment_messages[message_id_int]
-            
-            # 목록 메시지 삭제
-            try:
-                if list_message_id > 0:
-                    list_msg = await channel.fetch_message(list_message_id)
-                    await list_msg.delete()
-            except discord.NotFound:
-                pass
-            
-            # 데이터 저장 (가장 마지막에)
+            # 2️⃣ 데이터 저장소에서 삭제
             battle_data = load_battle_data()
             if message_id in battle_data:
                 del battle_data[message_id]
                 save_battle_data(battle_data)
             
-            # 완료 메시지
+            # 3️⃣ 목록 메시지 삭제 (현재 드롭다운 메시지)
+            try:
+                list_msg = await interaction.original_response()
+                await list_msg.delete()
+            except:
+                pass
+            
+            # 4️⃣ 완료 메시지
             await interaction.followup.send("✅ 구인 메시지가 삭제되었습니다!", ephemeral=True, delete_after=3)
             
         except Exception as e:
