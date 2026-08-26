@@ -35,7 +35,7 @@ directory = os.path.dirname(os.path.abspath(__file__))
 
 # 재연결 시도 횟수 추적
 reconnect_attempts = 0
-MAX_RECONNECT_ATTEMPTS = 5
+MAX_RECONNECT_ATTEMPTS = 15
 
 @bot.event
 async def on_ready():
@@ -144,7 +144,7 @@ async def main():
     """봇 초기화 및 실행 (자동 재연결 활성화)"""
     global reconnect_attempts
     
-    max_retries = 3
+    max_retries = 15
     retry_count = 0
     
     while retry_count < max_retries:
