@@ -604,6 +604,7 @@ class Recruitment(commands.Cog):
                 "recruitment": message.id,
                 "settings": settings_interaction.id if settings_interaction else None,
             }
+            self.sessions.pop(user_id, None)
 
         except discord.Forbidden:
             embed = discord.Embed(
@@ -642,8 +643,6 @@ class Recruitment(commands.Cog):
             await asyncio.sleep(10)
             await msg.delete()
             print(f"❌ 구인 시작 오류: {e}")
-        finally:
-            self.sessions.pop(user_id, None)
 
     @discord.app_commands.command(name="삭제", description="진행 중인 구인 메시지 삭제")
     async def delete_recruitment(self, interaction: discord.Interaction):
