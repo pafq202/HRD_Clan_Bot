@@ -212,13 +212,14 @@ class GameTimeModal(discord.ui.Modal, title="게임 시간 설정"):
         max_length=50,
     )
 
-    def __init__(self, cog, user_id: int):
+    def __init__(self, cog, user_id: int, session_token: int):
         super().__init__()
         self.cog = cog
         self.user_id = user_id
+        self.session_token = session_token
 
     async def on_submit(self, interaction: discord.Interaction):
-        session = self.cog.sessions.get(self.user_id)
+        session = self.cog.get_session(self.user_id, self.session_token)
         if not session:
             await interaction.response.send_message(
                 "❌ 설정 세션을 찾을 수 없습니다. `/양식`을 다시 실행해주세요.",
@@ -245,13 +246,14 @@ class GameTypeModal(discord.ui.Modal, title="게임 종류 설정"):
         max_length=50,
     )
 
-    def __init__(self, cog, user_id: int):
+    def __init__(self, cog, user_id: int, session_token: int):
         super().__init__()
         self.cog = cog
         self.user_id = user_id
+        self.session_token = session_token
 
     async def on_submit(self, interaction: discord.Interaction):
-        session = self.cog.sessions.get(self.user_id)
+        session = self.cog.get_session(self.user_id, self.session_token)
         if not session:
             await interaction.response.send_message(
                 "❌ 설정 세션을 찾을 수 없습니다. `/양식`을 다시 실행해주세요.",
@@ -278,13 +280,14 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
         max_length=1,
     )
 
-    def __init__(self, cog, user_id: int):
+    def __init__(self, cog, user_id: int, session_token: int):
         super().__init__()
         self.cog = cog
         self.user_id = user_id
+        self.session_token = session_token
 
     async def on_submit(self, interaction: discord.Interaction):
-        session = self.cog.sessions.get(self.user_id)
+        session = self.cog.get_session(self.user_id, self.session_token)
         if not session:
             await interaction.response.send_message(
                 "❌ 설정 세션을 찾을 수 없습니다. `/양식`을 다시 실행해주세요.",
@@ -337,11 +340,13 @@ class VoiceChannelSelect(discord.ui.Select):
         cog,
         guild: discord.Guild,
         user_id: int,
+        session_token: int,
         voice_channel_interaction: discord.Interaction = None,
     ):
         self.cog = cog
         self.guild = guild
         self.user_id = user_id
+        self.session_token = session_token
         self.voice_channel_interaction = voice_channel_interaction
 
         voice_channels = [channel for channel in guild.channels if isinstance(channel, discord.VoiceChannel)]
@@ -358,7 +363,7 @@ class VoiceChannelSelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        session = self.cog.sessions.get(self.user_id)
+        session = self.cog.get_session(self.user_id, self.session_token)
         if not session:
             await interaction.response.send_message(
                 "❌ 설정 세션을 찾을 수 없습니다. `/양식`을 다시 실행해주세요.",
@@ -397,34 +402,42 @@ class VoiceChannelView(discord.ui.View):
         cog,
         guild: discord.Guild,
         user_id: int,
+        session_token: int,
         voice_channel_interaction: discord.Interaction = None,
     ):
         super().__init__(timeout=300)
-        self.add_item(VoiceChannelSelect(cog, guild, user_id, voice_channel_interaction))
+        self.add_item(VoiceChannelSelect(cog, guild, user_id, session_token, voice_channel_interaction))
 
 
 class SettingsView(discord.ui.View):
     """게임 설정 입력 버튼 뷰"""
-    def __init__(self, cog, user_id: int):
+    def __init__(self, cog, user_id: int, session_token: int):
         super().__init__(timeout=300)
         self.cog = cog
         self.user_id = user_id
+        self.session_token = session_token
 
     @discord.ui.button(label="시간 설정", style=discord.ButtonStyle.blurple, custom_id="time_input_btn")
     async def time_input_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(GameTimeModal(self.cog, self.user_id))
+        await interaction.response.send_modal(GameTimeModal(self.cog, self.user_id, self.session_token))
 
     @discord.ui.button(label="종류 설정", style=discord.ButtonStyle.blurple, custom_id="type_input_btn")
     async def type_input_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(GameTypeModal(self.cog, self.user_id))
+        await interaction.response.send_modal(GameTypeModal(self.cog, self.user_id, self.session_token))
 
     @discord.ui.button(label="인원 설정", style=discord.ButtonStyle.blurple, custom_id="player_input_btn")
     async def player_input_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(PlayerCountModal(self.cog, self.user_id))
+        await interaction.response.send_modal(PlayerCountModal(self.cog, self.user_id, self.session_token))
 
     @discord.ui.button(label="채널 선택", style=discord.ButtonStyle.blurple, custom_id="channel_select_btn")
     async def channel_select_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
-        view = VoiceChannelView(self.cog, interaction.guild, self.user_id, interaction)
+        view = VoiceChannelView(
+            self.cog,
+            interaction.guild,
+            self.user_id,
+            self.session_token,
+            interaction,
+        )
         embed = discord.Embed(
             title="🎧 음성 채널 선택",
             description="아래 드롭다운에서 게임할 음성 채널을 선택하세요!",
@@ -474,8 +487,9 @@ class Recruitment(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.sessions: Dict[int, dict] = {}
+        self.session_counter = 0
 
-    def _new_session(self) -> dict:
+    def _new_session(self, session_token: int) -> dict:
         return {
             "recruitment_settings": {
                 "game_time": "미정",
@@ -487,11 +501,20 @@ class Recruitment(commands.Cog):
             "recruiter": None,
             "interaction_channel": None,
             "setting_notifications": [],
+            "session_token": session_token,
         }
+
+    def get_session(self, user_id: int, session_token: Optional[int] = None) -> Optional[dict]:
+        session = self.sessions.get(user_id)
+        if not session:
+            return None
+        if session_token is not None and session.get("session_token") != session_token:
+            return None
+        return session
 
     def is_recruitment_complete(self, user_id: int) -> bool:
         """모든 설정이 완료되었는지 확인"""
-        session = self.sessions.get(user_id)
+        session = self.get_session(user_id)
         if not session:
             return False
 
@@ -510,7 +533,7 @@ class Recruitment(commands.Cog):
 
     async def clear_setting_notifications(self, user_id: int):
         """설정 완료 메시지들 삭제"""
-        session = self.sessions.get(user_id)
+        session = self.get_session(user_id)
         if not session:
             return
 
@@ -526,7 +549,8 @@ class Recruitment(commands.Cog):
     async def recruitment_settings_slash(self, interaction: discord.Interaction):
         """슬래시 명령어: /양식 - 게임 시간, 종류, 인원, 음성 채널을 설정하여 구인 시작"""
         user_id = interaction.user.id
-        self.sessions[user_id] = self._new_session()
+        self.session_counter += 1
+        self.sessions[user_id] = self._new_session(self.session_counter)
         session = self.sessions[user_id]
         session["settings_interaction"] = interaction
         session["interaction_channel"] = interaction.channel
@@ -543,17 +567,18 @@ class Recruitment(commands.Cog):
             color=discord.Color.blue(),
         )
 
-        view = SettingsView(cog=self, user_id=user_id)
+        view = SettingsView(cog=self, user_id=user_id, session_token=session["session_token"])
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     async def start_recruitment(self, user_id: int, interaction: discord.Interaction):
         """구인 메시지 자동 발송"""
-        session = self.sessions.get(user_id)
+        session = self.get_session(user_id)
         if not session:
             return
 
         try:
-            await interaction.response.defer()
+            if not interaction.response.is_done():
+                await interaction.response.defer()
         except Exception:
             pass
 
