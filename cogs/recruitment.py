@@ -51,6 +51,13 @@ def _get_battle_data_path() -> str:
     return os.path.join(data_dir, "pending_recruitment.json")
 
 
+def _get_history_path() -> str:
+    """영구 보관용 구인 기록 파일 경로 반환 (삭제되지 않는 기록)"""
+    data_dir = os.path.join(directory, "data")
+    os.makedirs(data_dir, exist_ok=True)
+    return os.path.join(data_dir, "recruitment_history.json")
+
+
 async def is_admin_or_owner(interaction: discord.Interaction) -> bool:
     """사용자가 관리자 또는 서버 주인인지 확인"""
     if not interaction.guild:
@@ -75,6 +82,67 @@ async def get_manageable_recruitments(interaction: discord.Interaction, battle_d
         for message_id, data in battle_data.items()
         if data.get("author_id") is not None and data.get("author_id") == interaction.user.id
     }
+
+
+def load_history_data() -> dict:
+    """영구 보관용 구인 기록 로드 (삭제와 무관하게 계속 남는 기록)"""
+    history_file = _get_history_path()
+    if not os.path.exists(history_file):
+        return {}
+
+    try:
+        with open(history_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"❌ 기록 로드 오류: {e}")
+        return {}
+
+
+def save_history_data(data: dict):
+    """영구 보관용 구인 기록 저장"""
+    history_file = _get_history_path()
+
+    try:
+        with open(history_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"❌ 기록 저장 오류: {e}")
+
+
+def record_recruitment_created(message_id: int, data: dict):
+    """구인 공고 생성 시점의 정보를 영구 기록 파일에 추가 (절대 삭제되지 않음)"""
+    history = load_history_data()
+    history[str(message_id)] = {
+        "author_id": data.get("author_id"),
+        "game_time": data.get("game_time"),
+        "game_type": data.get("game_type"),
+        "max_players": data.get("max_players"),
+        "voice_channel": data.get("voice_channel"),
+        "created_at": data.get("created_at"),
+        "deleted_at": None,
+        "deleted_by": None,
+    }
+    save_history_data(history)
+
+
+def record_recruitment_deleted(message_id: str, deleted_by: int):
+    """구인 공고 삭제 시점 정보를 영구 기록에 추가 (기록 자체는 삭제하지 않고 상태만 갱신)"""
+    history = load_history_data()
+    entry = history.get(str(message_id))
+    if entry is None:
+        # 기록이 없던 경우에도 최소 정보로 남겨 둔다
+        entry = {
+            "author_id": None,
+            "game_time": None,
+            "game_type": None,
+            "max_players": None,
+            "voice_channel": None,
+            "created_at": None,
+        }
+    entry["deleted_at"] = datetime.now(timezone.utc).isoformat()
+    entry["deleted_by"] = deleted_by
+    history[str(message_id)] = entry
+    save_history_data(history)
 
 
 class BattleView(discord.ui.View):
@@ -824,6 +892,16 @@ class Recruitment(commands.Cog):
             view.message_id = message.id
             view.save_players()
 
+            # 영구 보관용 기록 파일에도 구인 생성 정보를 남김 (이 기록은 /삭제로도 지워지지 않음)
+            record_recruitment_created(message.id, {
+                "author_id": view.author_id,
+                "game_time": view.game_time,
+                "game_type": view.game_type,
+                "max_players": view.max_players,
+                "voice_channel": view.voice_channel,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+
             recruitment_messages[message.id] = {
                 "recruitment": message.id,
                 "settings": settings_interaction.id if settings_interaction else None,
@@ -926,6 +1004,9 @@ class Recruitment(commands.Cog):
             if message_id in battle_data:
                 del battle_data[message_id]
                 save_battle_data(battle_data)
+
+            # 2.5️⃣ 영구 기록에는 삭제 시각/삭제자만 남기고 기록 자체는 보존
+            record_recruitment_deleted(message_id, interaction.user.id)
             
             # 관리자가 타인의 공고를 삭제한 경우 작성자에게 DM 알림
             author_id = (recruitment_data or {}).get("author_id")
@@ -1048,6 +1129,16 @@ class Recruitment(commands.Cog):
             message = await state.channel.fetch_message(int(state.message_id))
             await message.edit(embed=view.create_embed(), view=view)
             view.save_players()
+
+            # 영구 기록에도 최신 설정을 반영 (삭제 여부와 무관하게 유지되는 기록)
+            record_recruitment_created(state.message_id, {
+                "author_id": view.author_id,
+                "game_time": view.game_time,
+                "game_type": view.game_type,
+                "max_players": view.max_players,
+                "voice_channel": view.voice_channel,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
         except Exception as e:
             state.done = False
             print(f"❌ 구인 수정 중 오류: {e}")
