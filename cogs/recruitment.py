@@ -212,18 +212,29 @@ class GameTimeModal(discord.ui.Modal, title="게임 시간 설정"):
         max_length=50,
     )
 
-    def __init__(self, cog):
+    def __init__(self, cog, user_id: int, session_token: int):
         super().__init__()
         self.cog = cog
+        self.user_id = user_id
+        self.session_token = session_token
 
     async def on_submit(self, interaction: discord.Interaction):
-        self.cog.recruitment_settings["game_time"] = self.game_time.value
-        self.cog.setting_notifications.append(interaction)
+        session = self.cog.get_session(self.user_id, self.session_token)
+        if not session:
+            await interaction.response.send_message(
+                "❌ 설정 세션을 찾을 수 없습니다. `/양식`을 다시 실행해주세요.",
+                ephemeral=True,
+                delete_after=5,
+            )
+            return
+
+        session["recruitment_settings"]["game_time"] = self.game_time.value
+        session["setting_notifications"].append(interaction)
         await interaction.response.send_message(
             f"✅ 게임 시간이 '{self.game_time.value}'로 설정되었습니다!",
             ephemeral=True,
         )
-        await self.cog.check_and_start_recruitment(interaction)
+        await self.cog.check_and_start_recruitment(self.user_id, interaction)
 
 
 class GameTypeModal(discord.ui.Modal, title="게임 종류 설정"):
@@ -235,18 +246,29 @@ class GameTypeModal(discord.ui.Modal, title="게임 종류 설정"):
         max_length=50,
     )
 
-    def __init__(self, cog):
+    def __init__(self, cog, user_id: int, session_token: int):
         super().__init__()
         self.cog = cog
+        self.user_id = user_id
+        self.session_token = session_token
 
     async def on_submit(self, interaction: discord.Interaction):
-        self.cog.recruitment_settings["game_type"] = self.game_type.value
-        self.cog.setting_notifications.append(interaction)
+        session = self.cog.get_session(self.user_id, self.session_token)
+        if not session:
+            await interaction.response.send_message(
+                "❌ 설정 세션을 찾을 수 없습니다. `/양식`을 다시 실행해주세요.",
+                ephemeral=True,
+                delete_after=5,
+            )
+            return
+
+        session["recruitment_settings"]["game_type"] = self.game_type.value
+        session["setting_notifications"].append(interaction)
         await interaction.response.send_message(
             f"✅ 게임 종류가 '{self.game_type.value}'로 설정되었습니다!",
             ephemeral=True,
         )
-        await self.cog.check_and_start_recruitment(interaction)
+        await self.cog.check_and_start_recruitment(self.user_id, interaction)
 
 
 class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
@@ -258,16 +280,27 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
         max_length=1,
     )
 
-    def __init__(self, cog):
+    def __init__(self, cog, user_id: int, session_token: int):
         super().__init__()
         self.cog = cog
+        self.user_id = user_id
+        self.session_token = session_token
 
     async def on_submit(self, interaction: discord.Interaction):
+        session = self.cog.get_session(self.user_id, self.session_token)
+        if not session:
+            await interaction.response.send_message(
+                "❌ 설정 세션을 찾을 수 없습니다. `/양식`을 다시 실행해주세요.",
+                ephemeral=True,
+                delete_after=5,
+            )
+            return
+
         try:
             count = int(self.player_count.value)
 
             if count < 2 or count > 4:
-                self.cog.setting_notifications.append(interaction)
+                session["setting_notifications"].append(interaction)
                 await interaction.response.send_message(
                     "❌ 인원은 2명(듀오) ~ 4명(스쿼드) 사이여야 합니다!",
                     ephemeral=True,
@@ -275,7 +308,7 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
                 )
                 return
 
-            self.cog.recruitment_settings["player_count"] = count
+            session["recruitment_settings"]["player_count"] = count
 
             if count == 2:
                 player_type = "듀오"
@@ -284,15 +317,15 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
             else:
                 player_type = "스쿼드"
 
-            self.cog.setting_notifications.append(interaction)
+            session["setting_notifications"].append(interaction)
             await interaction.response.send_message(
                 f"✅ 모집 인원이 {count}명({player_type})으로 설정되었습니다!",
                 ephemeral=True,
             )
-            await self.cog.check_and_start_recruitment(interaction)
+            await self.cog.check_and_start_recruitment(self.user_id, interaction)
 
         except ValueError:
-            self.cog.setting_notifications.append(interaction)
+            session["setting_notifications"].append(interaction)
             await interaction.response.send_message(
                 "❌ 숫자를 입력해주세요! (2 또는 3 또는 4)",
                 ephemeral=True,
@@ -302,9 +335,18 @@ class PlayerCountModal(discord.ui.Modal, title="인원 설정"):
 
 class VoiceChannelSelect(discord.ui.Select):
     """음성 채널 선택 드롭다운"""
-    def __init__(self, cog, guild: discord.Guild, voice_channel_interaction: discord.Interaction = None):
+    def __init__(
+        self,
+        cog,
+        guild: discord.Guild,
+        user_id: int,
+        session_token: int,
+        voice_channel_interaction: discord.Interaction = None,
+    ):
         self.cog = cog
         self.guild = guild
+        self.user_id = user_id
+        self.session_token = session_token
         self.voice_channel_interaction = voice_channel_interaction
 
         voice_channels = [channel for channel in guild.channels if isinstance(channel, discord.VoiceChannel)]
@@ -321,6 +363,15 @@ class VoiceChannelSelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        session = self.cog.get_session(self.user_id, self.session_token)
+        if not session:
+            await interaction.response.send_message(
+                "❌ 설정 세션을 찾을 수 없습니다. `/양식`을 다시 실행해주세요.",
+                ephemeral=True,
+                delete_after=5,
+            )
+            return
+
         if self.values[0] == "none":
             await interaction.response.send_message(
                 "❌ 사용 가능한 음성 채널이 없습니다!",
@@ -333,7 +384,7 @@ class VoiceChannelSelect(discord.ui.Select):
         channel = self.guild.get_channel(channel_id)
 
         if channel:
-            self.cog.recruitment_settings["voice_channel"] = f"#{channel.name}"
+            session["recruitment_settings"]["voice_channel"] = f"#{channel.name}"
 
             if self.voice_channel_interaction:
                 try:
@@ -341,37 +392,52 @@ class VoiceChannelSelect(discord.ui.Select):
                 except Exception:
                     pass
 
-            await self.cog.check_and_start_recruitment(interaction)
+            await self.cog.check_and_start_recruitment(self.user_id, interaction)
 
 
 class VoiceChannelView(discord.ui.View):
     """음성 채널 선택 뷰"""
-    def __init__(self, cog, guild: discord.Guild, voice_channel_interaction: discord.Interaction = None):
+    def __init__(
+        self,
+        cog,
+        guild: discord.Guild,
+        user_id: int,
+        session_token: int,
+        voice_channel_interaction: discord.Interaction = None,
+    ):
         super().__init__(timeout=300)
-        self.add_item(VoiceChannelSelect(cog, guild, voice_channel_interaction))
+        self.add_item(VoiceChannelSelect(cog, guild, user_id, session_token, voice_channel_interaction))
 
 
 class SettingsView(discord.ui.View):
     """게임 설정 입력 버튼 뷰"""
-    def __init__(self, cog):
+    def __init__(self, cog, user_id: int, session_token: int):
         super().__init__(timeout=300)
         self.cog = cog
+        self.user_id = user_id
+        self.session_token = session_token
 
     @discord.ui.button(label="시간 설정", style=discord.ButtonStyle.blurple, custom_id="time_input_btn")
     async def time_input_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(GameTimeModal(self.cog))
+        await interaction.response.send_modal(GameTimeModal(self.cog, self.user_id, self.session_token))
 
     @discord.ui.button(label="종류 설정", style=discord.ButtonStyle.blurple, custom_id="type_input_btn")
     async def type_input_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(GameTypeModal(self.cog))
+        await interaction.response.send_modal(GameTypeModal(self.cog, self.user_id, self.session_token))
 
     @discord.ui.button(label="인원 설정", style=discord.ButtonStyle.blurple, custom_id="player_input_btn")
     async def player_input_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(PlayerCountModal(self.cog))
+        await interaction.response.send_modal(PlayerCountModal(self.cog, self.user_id, self.session_token))
 
     @discord.ui.button(label="채널 선택", style=discord.ButtonStyle.blurple, custom_id="channel_select_btn")
     async def channel_select_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
-        view = VoiceChannelView(self.cog, interaction.guild, interaction)
+        view = VoiceChannelView(
+            self.cog,
+            interaction.guild,
+            self.user_id,
+            self.session_token,
+            interaction,
+        )
         embed = discord.Embed(
             title="🎧 음성 채널 선택",
             description="아래 드롭다운에서 게임할 음성 채널을 선택하세요!",
@@ -420,53 +486,75 @@ class Recruitment(commands.Cog):
     """구인 관련 명령어 및 기능"""
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.recruitment_settings = {
-            "game_time": "미정",
-            "game_type": "미정",
-            "player_count": 0,
-            "voice_channel": "미정",
-        }
-        self.settings_interaction = None
-        self.recruiter = None
-        self.interaction_channel = None
-        self.setting_notifications = []
+        self.sessions: Dict[int, dict] = {}
+        self.session_counter = 0
 
-    def is_recruitment_complete(self) -> bool:
+    def _new_session(self, session_token: int) -> dict:
+        return {
+            "recruitment_settings": {
+                "game_time": "미정",
+                "game_type": "미정",
+                "player_count": 0,
+                "voice_channel": "미정",
+            },
+            "settings_interaction": None,
+            "recruiter": None,
+            "interaction_channel": None,
+            "setting_notifications": [],
+            "session_token": session_token,
+        }
+
+    def get_session(self, user_id: int, session_token: Optional[int] = None) -> Optional[dict]:
+        session = self.sessions.get(user_id)
+        if not session:
+            return None
+        if session_token is not None and session.get("session_token") != session_token:
+            return None
+        return session
+
+    def is_recruitment_complete(self, user_id: int) -> bool:
         """모든 설정이 완료되었는지 확인"""
+        session = self.get_session(user_id)
+        if not session:
+            return False
+
+        recruitment_settings = session["recruitment_settings"]
         return (
-            self.recruitment_settings["game_time"] != "미정"
-            and self.recruitment_settings["game_type"] != "미정"
-            and self.recruitment_settings["player_count"] > 0
-            and self.recruitment_settings["voice_channel"] != "미정"
+            recruitment_settings["game_time"] != "미정"
+            and recruitment_settings["game_type"] != "미정"
+            and recruitment_settings["player_count"] > 0
+            and recruitment_settings["voice_channel"] != "미정"
         )
 
-    async def check_and_start_recruitment(self, interaction: discord.Interaction):
+    async def check_and_start_recruitment(self, user_id: int, interaction: discord.Interaction):
         """설정 완료 여부 확인 후 구인 시작"""
-        if self.is_recruitment_complete():
-            await self.start_recruitment(interaction)
+        if self.is_recruitment_complete(user_id):
+            await self.start_recruitment(user_id, interaction)
 
-    async def clear_setting_notifications(self):
+    async def clear_setting_notifications(self, user_id: int):
         """설정 완료 메시지들 삭제"""
-        for notification_interaction in list(self.setting_notifications):
+        session = self.get_session(user_id)
+        if not session:
+            return
+
+        setting_notifications = session["setting_notifications"]
+        for notification_interaction in list(setting_notifications):
             try:
                 await notification_interaction.delete_original_response()
             except Exception:
                 pass
-        self.setting_notifications.clear()
+        setting_notifications.clear()
 
     @discord.app_commands.command(name="양식", description="배틀그라운드 구인 설정")
     async def recruitment_settings_slash(self, interaction: discord.Interaction):
         """슬래시 명령어: /양식 - 게임 시간, 종류, 인원, 음성 채널을 설정하여 구인 시작"""
-        self.recruitment_settings = {
-            "game_time": "미정",
-            "game_type": "미정",
-            "player_count": 0,
-            "voice_channel": "미정",
-        }
-        self.setting_notifications = []
-        self.settings_interaction = interaction
-        self.interaction_channel = interaction.channel
-        self.recruiter = interaction.user
+        user_id = interaction.user.id
+        self.session_counter += 1
+        self.sessions[user_id] = self._new_session(self.session_counter)
+        session = self.sessions[user_id]
+        session["settings_interaction"] = interaction
+        session["interaction_channel"] = interaction.channel
+        session["recruiter"] = interaction.user
 
         embed = discord.Embed(
             title="⚙️ 배틀그라운드 구인 설정",
@@ -479,19 +567,26 @@ class Recruitment(commands.Cog):
             color=discord.Color.blue(),
         )
 
-        view = SettingsView(cog=self)
+        view = SettingsView(cog=self, user_id=user_id, session_token=session["session_token"])
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-    async def start_recruitment(self, interaction: discord.Interaction):
+    async def start_recruitment(self, user_id: int, interaction: discord.Interaction):
         """구인 메시지 자동 발송"""
+        session = self.get_session(user_id)
+        if not session:
+            return
+
         try:
-            await interaction.response.defer()
+            if not interaction.response.is_done():
+                await interaction.response.defer()
         except Exception:
             pass
 
-        channel = self.interaction_channel or interaction.channel
-        player_count = self.recruitment_settings.get("player_count", 4)
-        settings_interaction = self.settings_interaction
+        recruitment_settings = session["recruitment_settings"]
+        channel = session.get("interaction_channel") or interaction.channel
+        player_count = recruitment_settings.get("player_count", 4)
+        settings_interaction = session.get("settings_interaction")
+        recruiter = session.get("recruiter")
 
         if settings_interaction:
             try:
@@ -499,14 +594,14 @@ class Recruitment(commands.Cog):
             except Exception:
                 pass
         
-        await self.clear_setting_notifications()
-        self.settings_interaction = None
+        await self.clear_setting_notifications(user_id)
+        session["settings_interaction"] = None
 
         view = BattleView(
-            game_time=self.recruitment_settings.get("game_time", "미정"),
-            game_type=self.recruitment_settings.get("game_type", "미정"),
+            game_time=recruitment_settings.get("game_time", "미정"),
+            game_type=recruitment_settings.get("game_type", "미정"),
             max_players=player_count,
-            voice_channel=self.recruitment_settings.get("voice_channel", "미정"),
+            voice_channel=recruitment_settings.get("voice_channel", "미정"),
         )
 
         try:
@@ -517,12 +612,12 @@ class Recruitment(commands.Cog):
             else:
                 player_type = "스쿼드"
 
-            if self.recruiter:
-                view.players[0] = self.recruiter
+            if recruiter:
+                view.players[0] = recruiter
 
             message = await channel.send(
                 "@here 🎮 배틀그라운드 스쿼드 구인이 시작되었습니다! "
-                f"({player_type} - {self.recruitment_settings.get('game_time')} - {self.recruitment_settings.get('game_type')})",
+                f"({player_type} - {recruitment_settings.get('game_time')} - {recruitment_settings.get('game_type')})",
                 embed=view.create_embed(),
                 view=view,
             )
@@ -534,6 +629,7 @@ class Recruitment(commands.Cog):
                 "recruitment": message.id,
                 "settings": settings_interaction.id if settings_interaction else None,
             }
+            self.sessions.pop(user_id, None)
 
         except discord.Forbidden:
             embed = discord.Embed(
