@@ -58,6 +58,25 @@ async def is_admin_or_owner(interaction: discord.Interaction) -> bool:
     return interaction.user.id == interaction.guild.owner_id or interaction.user.guild_permissions.administrator
 
 
+async def can_manage_recruitment(interaction: discord.Interaction, data: Optional[dict]) -> bool:
+    """작성자 본인 또는 관리자/서버 주인인지 확인"""
+    if await is_admin_or_owner(interaction):
+        return True
+    author_id = (data or {}).get("author_id")
+    return author_id is not None and author_id == interaction.user.id
+
+
+async def get_manageable_recruitments(interaction: discord.Interaction, battle_data: dict) -> dict:
+    """요청한 유저가 관리할 수 있는 구인만 반환"""
+    if await is_admin_or_owner(interaction):
+        return dict(battle_data)
+    return {
+        message_id: data
+        for message_id, data in battle_data.items()
+        if data.get("author_id") is not None and data.get("author_id") == interaction.user.id
+    }
+
+
 class BattleView(discord.ui.View):
     """참여 인원을 관리하는 뷰"""
     def __init__(
@@ -67,6 +86,7 @@ class BattleView(discord.ui.View):
         game_type: str = "미정",
         max_players: int = 4,
         voice_channel: str = "미정",
+        author_id: int = None,
     ):
         super().__init__(timeout=None)
         self.message_id = message_id
@@ -74,13 +94,16 @@ class BattleView(discord.ui.View):
         self.game_type = game_type
         self.max_players = max_players
         self.voice_channel = voice_channel
+        self.author_id = author_id
         self.players = [None] * max_players
 
         if message_id:
             battle_data = load_battle_data()
             if str(message_id) in battle_data:
-                player_ids = battle_data[str(message_id)].get("players", [])
+                data = battle_data[str(message_id)]
+                player_ids = data.get("players", [])
                 self.players = _normalize_players(player_ids, max_players)
+                self.author_id = data.get("author_id", self.author_id)
 
     def create_embed(self) -> discord.Embed:
         """구인 메시지 Embed 생성"""
@@ -93,8 +116,11 @@ class BattleView(discord.ui.View):
             else:
                 player_lines.append(f"{index}. {player.mention}")
 
+        author_line = f"✍️ 작성자: <@{self.author_id}>\n" if self.author_id else ""
+
         description = (
             "🎮 BATTLEGROUND\n"
+            f"{author_line}"
             f"게임 시간: {self.game_time}\n"
             f"게임종류: {self.game_type}\n"
             f"📍 음성채널: {self.voice_channel}\n"
@@ -121,6 +147,7 @@ class BattleView(discord.ui.View):
             "game_type": self.game_type,
             "max_players": self.max_players,
             "voice_channel": self.voice_channel,
+            "author_id": self.author_id,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         save_battle_data(battle_data)
@@ -446,9 +473,18 @@ class SettingsView(discord.ui.View):
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
+def _author_suffix(interaction: discord.Interaction, data: dict) -> str:
+    """드롭다운 라벨용 작성자 표시"""
+    author_id = data.get("author_id")
+    if not author_id:
+        return ""
+    member = interaction.guild.get_member(author_id) if interaction.guild else None
+    return f" - 작성자: {member.display_name if member else author_id}"
+
+
 class DeleteRecruitmentSelect(discord.ui.Select):
     """삭제할 구인 선택 드롭다운"""
-    def __init__(self, cog, recruitments: Dict, list_message_id: int):
+    def __init__(self, cog, recruitments: Dict, list_message_id: int, interaction: discord.Interaction):
         self.cog = cog
         self.recruitments = recruitments
         self.list_message_id = list_message_id
@@ -461,8 +497,8 @@ class DeleteRecruitmentSelect(discord.ui.Select):
             created_at = data.get("created_at", "")
             time_diff = get_time_difference(created_at)
 
-            label = f"{game_time} - {game_type} ({max_players}명) ({time_diff})"
-            options.append(discord.SelectOption(label=label, value=message_id))
+            label = f"{game_time} - {game_type} ({max_players}명) ({time_diff}){_author_suffix(interaction, data)}"
+            options.append(discord.SelectOption(label=label[:100], value=message_id))
 
         super().__init__(
             placeholder="삭제할 구인을 선택하세요...",
@@ -477,9 +513,171 @@ class DeleteRecruitmentSelect(discord.ui.Select):
 
 class DeleteRecruitmentView(discord.ui.View):
     """삭제할 구인 선택 뷰"""
-    def __init__(self, cog, recruitments: Dict, list_message_id: int):
+    def __init__(self, cog, recruitments: Dict, list_message_id: int, interaction: discord.Interaction):
         super().__init__(timeout=300)
-        self.add_item(DeleteRecruitmentSelect(cog, recruitments, list_message_id))
+        self.add_item(DeleteRecruitmentSelect(cog, recruitments, list_message_id, interaction))
+
+
+class EditState:
+    """/수정 에서 다시 입력받는 설정"""
+    def __init__(self, message_id: str, channel):
+        self.message_id = message_id
+        self.channel = channel
+        self.game_time = "미정"
+        self.game_type = "미정"
+        self.player_count = 0
+        self.voice_channel = "미정"
+        self.notifications = []
+        self.done = False
+
+    def is_complete(self) -> bool:
+        return (
+            self.game_time != "미정"
+            and self.game_type != "미정"
+            and self.player_count > 0
+            and self.voice_channel != "미정"
+        )
+
+
+class EditGameTimeModal(discord.ui.Modal, title="게임 시간 수정"):
+    game_time = discord.ui.TextInput(label="게임 시간", placeholder="예: 오후 6시", required=True, max_length=50)
+
+    def __init__(self, cog, state: EditState):
+        super().__init__()
+        self.cog = cog
+        self.state = state
+
+    async def on_submit(self, interaction: discord.Interaction):
+        self.state.game_time = self.game_time.value
+        await self.cog.after_edit_input(
+            interaction, self.state, f"✅ 게임 시간이 '{self.game_time.value}'로 설정되었습니다!"
+        )
+
+
+class EditGameTypeModal(discord.ui.Modal, title="게임 종류 수정"):
+    game_type = discord.ui.TextInput(label="게임 종류", placeholder="예: 일반, 경쟁", required=True, max_length=50)
+
+    def __init__(self, cog, state: EditState):
+        super().__init__()
+        self.cog = cog
+        self.state = state
+
+    async def on_submit(self, interaction: discord.Interaction):
+        self.state.game_type = self.game_type.value
+        await self.cog.after_edit_input(
+            interaction, self.state, f"✅ 게임 종류가 '{self.game_type.value}'로 설정되었습니다!"
+        )
+
+
+class EditPlayerCountModal(discord.ui.Modal, title="인원 수정"):
+    player_count = discord.ui.TextInput(label="모집 인원 (2~4명)", placeholder="예: 2 또는 4", required=True, max_length=1)
+
+    def __init__(self, cog, state: EditState):
+        super().__init__()
+        self.cog = cog
+        self.state = state
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            count = int(self.player_count.value)
+        except ValueError:
+            count = 0
+        if count < 2 or count > 4:
+            await interaction.response.send_message(
+                "❌ 인원은 2명(듀오) ~ 4명(스쿼드) 사이의 숫자여야 합니다!", ephemeral=True, delete_after=3
+            )
+            return
+        self.state.player_count = count
+        await self.cog.after_edit_input(interaction, self.state, f"✅ 모집 인원이 {count}명으로 설정되었습니다!")
+
+
+class EditVoiceChannelSelect(discord.ui.Select):
+    def __init__(self, cog, guild: discord.Guild, state: EditState, channel_interaction: discord.Interaction):
+        self.cog = cog
+        self.guild = guild
+        self.state = state
+        self.channel_interaction = channel_interaction
+
+        options = [
+            discord.SelectOption(label=f"🎮 {channel.name}"[:100], value=str(channel.id))
+            for channel in guild.channels
+            if isinstance(channel, discord.VoiceChannel)
+        ][:25]
+        super().__init__(
+            placeholder="음성 채널을 선택하세요...",
+            options=options if options else [discord.SelectOption(label="음성 채널 없음", value="none")],
+            disabled=len(options) == 0,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        if self.values[0] == "none":
+            await interaction.response.send_message("❌ 사용 가능한 음성 채널이 없습니다!", ephemeral=True, delete_after=3)
+            return
+        channel = self.guild.get_channel(int(self.values[0]))
+        if not channel:
+            return
+        self.state.voice_channel = f"#{channel.name}"
+        try:
+            await self.channel_interaction.delete_original_response()
+        except Exception:
+            pass
+        await self.cog.check_and_apply_edit(interaction, self.state)
+
+
+class EditSettingsView(discord.ui.View):
+    """구인 수정용 설정 버튼 뷰"""
+    def __init__(self, cog, state: EditState):
+        super().__init__(timeout=300)
+        self.cog = cog
+        self.state = state
+
+    @discord.ui.button(label="시간 설정", style=discord.ButtonStyle.blurple)
+    async def time_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(EditGameTimeModal(self.cog, self.state))
+
+    @discord.ui.button(label="종류 설정", style=discord.ButtonStyle.blurple)
+    async def type_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(EditGameTypeModal(self.cog, self.state))
+
+    @discord.ui.button(label="인원 설정", style=discord.ButtonStyle.blurple)
+    async def count_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(EditPlayerCountModal(self.cog, self.state))
+
+    @discord.ui.button(label="채널 선택", style=discord.ButtonStyle.blurple)
+    async def channel_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
+        view = discord.ui.View(timeout=300)
+        view.add_item(EditVoiceChannelSelect(self.cog, interaction.guild, self.state, interaction))
+        embed = discord.Embed(
+            title="🎧 음성 채널 선택",
+            description="아래 드롭다운에서 게임할 음성 채널을 선택하세요!",
+            color=discord.Color.blue(),
+        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+class EditRecruitmentSelect(discord.ui.Select):
+    """수정할 구인 선택 드롭다운"""
+    def __init__(self, cog, recruitments: Dict, interaction: discord.Interaction):
+        self.cog = cog
+        options = []
+        for message_id, data in recruitments.items():
+            label = (
+                f"{data.get('game_time', '미정')} - {data.get('game_type', '미정')} "
+                f"({data.get('max_players', 4)}명) ({get_time_difference(data.get('created_at', ''))})"
+                f"{_author_suffix(interaction, data)}"
+            )
+            options.append(discord.SelectOption(label=label[:100], value=message_id))
+
+        super().__init__(placeholder="수정할 구인을 선택하세요...", options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        await self.cog.start_edit(interaction, self.values[0])
+
+
+class EditRecruitmentView(discord.ui.View):
+    def __init__(self, cog, recruitments: Dict, interaction: discord.Interaction):
+        super().__init__(timeout=300)
+        self.add_item(EditRecruitmentSelect(cog, recruitments, interaction))
 
 
 class Recruitment(commands.Cog):
@@ -602,6 +800,7 @@ class Recruitment(commands.Cog):
             game_type=recruitment_settings.get("game_type", "미정"),
             max_players=player_count,
             voice_channel=recruitment_settings.get("voice_channel", "미정"),
+            author_id=recruiter.id if recruiter else None,
         )
 
         try:
@@ -672,17 +871,15 @@ class Recruitment(commands.Cog):
     @discord.app_commands.command(name="삭제", description="진행 중인 구인 메시지 삭제")
     async def delete_recruitment(self, interaction: discord.Interaction):
         """슬래시 명령어: /삭제 - 진행 중인 구인 메시지를 선택하여 삭제"""
-        battle_data = load_battle_data()
+        battle_data = await get_manageable_recruitments(interaction, load_battle_data())
 
         if not battle_data:
             embed = discord.Embed(
                 title="❌ 구인 메시지 없음",
-                description="진행 중인 구인 메시지가 없습니다.",
+                description="삭제할 수 있는 구인 공고가 없습니다 (본인이 작성한 공고만 삭제 가능합니다).",
                 color=discord.Color.red(),
             )
-            msg = await interaction.response.send_message(embed=embed, ephemeral=True)
-            await asyncio.sleep(3)
-            await msg.delete()
+            await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=3)
             return
 
         embed = discord.Embed(
@@ -691,7 +888,7 @@ class Recruitment(commands.Cog):
             color=discord.Color.blue(),
         )
 
-        view = DeleteRecruitmentView(self, battle_data, 0)
+        view = DeleteRecruitmentView(self, battle_data, 0, interaction)
         message = await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
         if isinstance(message, discord.Message):
@@ -707,6 +904,12 @@ class Recruitment(commands.Cog):
         except Exception:
             pass
         
+        battle_data = load_battle_data()
+        recruitment_data = battle_data.get(message_id)
+        if not await can_manage_recruitment(interaction, recruitment_data):
+            await interaction.followup.send("❌ 본인이 작성한 구인 공고만 삭제할 수 있습니다.", ephemeral=True)
+            return
+
         try:
             channel = interaction.channel
             message_id_int = int(message_id)
@@ -724,6 +927,11 @@ class Recruitment(commands.Cog):
                 del battle_data[message_id]
                 save_battle_data(battle_data)
             
+            # 관리자가 타인의 공고를 삭제한 경우 작성자에게 DM 알림
+            author_id = (recruitment_data or {}).get("author_id")
+            if author_id and author_id != interaction.user.id:
+                await self.notify_author_deleted(interaction, author_id, recruitment_data)
+
             # 3️⃣ 목록 메시지 삭제
             try:
                 list_msg = await interaction.original_response()
@@ -748,6 +956,111 @@ class Recruitment(commands.Cog):
             except:
                 pass
 
+    async def notify_author_deleted(self, interaction: discord.Interaction, author_id: int, data: dict):
+        """관리자 삭제 시 작성자에게 DM 전송 (실패해도 무시)"""
+        try:
+            author = interaction.guild.get_member(author_id) or await self.bot.fetch_user(author_id)
+            embed = discord.Embed(
+                title="🗑️ 구인 공고 삭제 알림",
+                description=(
+                    f"관리자에 의해 회원님이 작성하신 구인 공고(게임 시간: {data.get('game_time', '미정')}, "
+                    f"게임 종류: {data.get('game_type', '미정')})가 삭제되었습니다.\n\n"
+                    f"서버: {interaction.guild.name}"
+                ),
+                color=discord.Color.red(),
+            )
+            await author.send(embed=embed)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+    @discord.app_commands.command(name="수정", description="진행 중인 구인 공고 설정 수정")
+    async def edit_recruitment(self, interaction: discord.Interaction):
+        """슬래시 명령어: /수정 - 본인이 작성한 구인 공고의 설정을 다시 입력"""
+        battle_data = await get_manageable_recruitments(interaction, load_battle_data())
+
+        if not battle_data:
+            embed = discord.Embed(
+                title="❌ 구인 메시지 없음",
+                description="수정할 수 있는 구인 공고가 없습니다 (본인이 작성한 공고만 수정 가능합니다).",
+                color=discord.Color.red(),
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True, delete_after=3)
+            return
+
+        embed = discord.Embed(
+            title="📋 진행 중인 구인 목록",
+            description="수정할 구인을 선택하세요:",
+            color=discord.Color.blue(),
+        )
+        await interaction.response.send_message(
+            embed=embed, view=EditRecruitmentView(self, battle_data, interaction), ephemeral=True
+        )
+
+    async def start_edit(self, interaction: discord.Interaction, message_id: str):
+        """선택한 구인의 수정용 설정 뷰 표시"""
+        if not await can_manage_recruitment(interaction, load_battle_data().get(message_id)):
+            await interaction.response.send_message(
+                "❌ 본인이 작성한 구인 공고만 수정할 수 있습니다.", ephemeral=True
+            )
+            return
+
+        state = EditState(message_id, interaction.channel)
+        embed = discord.Embed(
+            title="⚙️ 구인 공고 수정",
+            description="아래 버튼으로 시간, 종류, 인원, 음성 채널을 모두 다시 입력하세요!\n\n"
+            "모든 설정을 완료하면 기존 구인 공고가 수정됩니다.",
+            color=discord.Color.blue(),
+        )
+        await interaction.response.send_message(embed=embed, view=EditSettingsView(self, state), ephemeral=True)
+
+    async def after_edit_input(self, interaction: discord.Interaction, state: EditState, text: str):
+        await interaction.response.send_message(text, ephemeral=True)
+        state.notifications.append(interaction)
+        await self.check_and_apply_edit(interaction, state)
+
+    async def check_and_apply_edit(self, interaction: discord.Interaction, state: EditState):
+        """4개 항목이 모두 입력되면 기존 구인 메시지 수정"""
+        if state.done or not state.is_complete():
+            return
+        state.done = True
+
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
+        except Exception:
+            pass
+
+        battle_data = load_battle_data()
+        data = battle_data.get(state.message_id)
+        if data is None or not await can_manage_recruitment(interaction, data):
+            await interaction.followup.send("❌ 본인이 작성한 구인 공고만 수정할 수 있습니다.", ephemeral=True)
+            return
+
+        try:
+            view = BattleView(
+                message_id=int(state.message_id),
+                game_time=state.game_time,
+                game_type=state.game_type,
+                max_players=state.player_count,
+                voice_channel=state.voice_channel,
+                author_id=data.get("author_id"),
+            )
+            message = await state.channel.fetch_message(int(state.message_id))
+            await message.edit(embed=view.create_embed(), view=view)
+            view.save_players()
+        except Exception as e:
+            state.done = False
+            print(f"❌ 구인 수정 중 오류: {e}")
+            await interaction.followup.send(f"❌ 오류: {str(e)}", ephemeral=True)
+            return
+
+        for notification in state.notifications:
+            try:
+                await notification.delete_original_response()
+            except Exception:
+                pass
+        await interaction.followup.send("✅ 구인 공고가 수정되었습니다!", ephemeral=True)
+
     @discord.app_commands.command(name="초대링크", description="HRD Clan Bot 초대 링크 공유")
     @discord.app_commands.check(is_admin_or_owner)
     async def invite_link(self, interaction: discord.Interaction):
@@ -765,8 +1078,9 @@ class Recruitment(commands.Cog):
             name="🚀 빠른 시작",
             value="1. 위의 링크를 클릭하여 봇 초대\n"
             "2. `/양식` 명령어로 구인 시작\n"
-            "3. `/삭제` 명령어로 구인 신청 삭제\n"
-            "4. 팀원들과 함께 플레이!",
+            "3. `/수정` 명령어로 본인 구인 공고 설정 변경\n"
+            "4. `/삭제` 명령어로 본인 구인 공고 삭제\n"
+            "5. 팀원들과 함께 플레이!",
             inline=False,
         )
 
