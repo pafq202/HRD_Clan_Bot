@@ -49,18 +49,32 @@ def save_history_data(data: dict):
 
 def _format_datetime(iso_string: str) -> str:
     """ISO 8601 형식을 'MM-DD HH:MM' 형식으로 변환"""
+    if not iso_string:
+        return None
+    
     try:
-        from dateutil import parser as date_parser
-        dt = date_parser.isoparse(iso_string)
-        return dt.strftime("%m-%d %H:%M")
-    except Exception:
+        # dateutil 사용
+        try:
+            from dateutil import parser as date_parser
+            dt = date_parser.isoparse(iso_string)
+            return dt.strftime("%m-%d %H:%M")
+        except ImportError:
+            # dateutil이 없으면 기본 datetime 사용
+            if isinstance(iso_string, str):
+                # ISO 8601 형식 파싱
+                dt = datetime.fromisoformat(iso_string.replace('Z', '+00:00'))
+            else:
+                dt = iso_string
+            return dt.strftime("%m-%d %H:%M")
+    except Exception as e:
+        print(f"⚠️ 시간 변환 오류: {e}, 원본: {iso_string}")
         return iso_string
 
 
 def record_recruitment_created(message_id, data: dict):
     """구인 공고 생성/수정 시점의 정보를 영구 기록 파일에 반영 (절대 삭제되지 않음)
 
-    data에는 다음 ���를 포함할 수 있습니다:
+    data에는 다음 키를 포함할 수 있습니다:
         author_id, author_name, game_time, game_type, max_players,
         voice_channel, created_at, guild_id, guild_name
     """
@@ -69,7 +83,7 @@ def record_recruitment_created(message_id, data: dict):
     
     # created_at을 MM-DD HH:MM 형식으로 변환
     created_at_input = data.get("created_at", "")
-    created_at_formatted = _format_datetime(created_at_input) if created_at_input else None
+    created_at_formatted = _format_datetime(created_at_input)
     
     history[str(message_id)] = {
         "방코드": str(message_id),
