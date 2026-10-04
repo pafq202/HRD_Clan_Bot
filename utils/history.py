@@ -136,12 +136,9 @@ def record_participant_joined(
     
     # 참여자 중복 확인
     participants = entry.get("participants", [])
-    if not any(p["user_name"] == user_name for p in participants):
+    if not any(p.get("user_name") == user_name for p in participants):
         joined_at = datetime.now(timezone.utc).isoformat()
-        participants.append({
-            "user_name": user_name,
-            "joined_at": _format_datetime(joined_at),
-        })
+        participants.append(f"{user_name}  ({_format_datetime(joined_at)})")
         entry["participants"] = participants
         history[str(message_id)] = entry
         save_history_data(history)
