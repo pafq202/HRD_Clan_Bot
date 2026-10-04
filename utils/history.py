@@ -52,6 +52,10 @@ def _format_datetime(iso_string: str) -> str:
     if not iso_string:
         return None
     
+    # 이미 변환된 형식이면 그대로 반환
+    if isinstance(iso_string, str) and "-" in iso_string and ":" in iso_string and len(iso_string) <= 16:
+        return iso_string
+    
     try:
         # dateutil 사용
         try:
@@ -105,7 +109,7 @@ def record_participant_joined(
     message_id,
     user_name: str,
 ):
-    """공고에 참여한 사용자 기록 (닉네임과 참여 시간만 기록)
+    """공고에 참여한 사용자 기록 (닉네임과 참여 시간을 함께 표시)
     
     Args:
         message_id: 메시지 ID
@@ -133,7 +137,9 @@ def record_participant_joined(
     participants = entry.get("참여자", [])
     if not any(user_name in p for p in participants):
         joined_at = datetime.now(timezone.utc).isoformat()
-        participants.append(f"{user_name}  ({_format_datetime(joined_at)})")
+        formatted_time = _format_datetime(joined_at)
+        # "닉네임  10-04 06:35" 형식으로 저장
+        participants.append(f"{user_name}  {formatted_time}")
         entry["참여자"] = participants
         history[str(message_id)] = entry
         save_history_data(history)
@@ -162,7 +168,10 @@ def record_recruitment_deleted(
             "삭제자": None,
             "삭제시간": None,
         }
-    entry["삭제자"] = deleted_by_name
-    entry["삭제시간"] = _format_datetime(datetime.now(timezone.utc).isoformat())
+    
+    formatted_delete_time = _format_datetime(datetime.now(timezone.utc).isoformat())
+    # "닉네임  10-04 06:47" 형식으로 저장
+    entry["삭제자"] = f"{deleted_by_name}  {formatted_delete_time}"
+    entry["삭제시간"] = None  # 삭제시간 필드는 사용하지 않음
     history[str(message_id)] = entry
     save_history_data(history)
