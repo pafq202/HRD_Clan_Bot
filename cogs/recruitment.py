@@ -52,6 +52,13 @@ def _get_battle_data_path() -> str:
     return os.path.join(data_dir, "pending_recruitment.json")
 
 
+def _display_name(user: Optional[discord.abc.User]) -> Optional[str]:
+    """유저의 서버 별명(닉네임)을 우선 사용하고, 없으면 글로벌 이름을 사용"""
+    if user is None:
+        return None
+    return getattr(user, "display_name", None) or str(user)
+
+
 async def is_admin_or_owner(interaction: discord.Interaction) -> bool:
     """사용자가 관리자 또는 서버 주인인지 확인"""
     if not interaction.guild:
@@ -826,13 +833,17 @@ class Recruitment(commands.Cog):
             view.save_players()
 
             # 영구 보관용 기록 파일에도 구인 생성 정보를 남김 (이 기록은 /삭제로도 지워지지 않음)
+            guild = interaction.guild
             record_recruitment_created(message.id, {
                 "author_id": view.author_id,
+                "author_name": _display_name(recruiter),
                 "game_time": view.game_time,
                 "game_type": view.game_type,
                 "max_players": view.max_players,
                 "voice_channel": view.voice_channel,
                 "created_at": datetime.now(timezone.utc).isoformat(),
+                "guild_id": guild.id if guild else None,
+                "guild_name": guild.name if guild else None,
             })
 
             recruitment_messages[message.id] = {
@@ -939,7 +950,11 @@ class Recruitment(commands.Cog):
                 save_battle_data(battle_data)
 
             # 2.5️⃣ 영구 기록에는 삭제 시각/삭제자만 남기고 기록 자체는 보존
-            record_recruitment_deleted(message_id, interaction.user.id)
+            record_recruitment_deleted(
+                message_id,
+                interaction.user.id,
+                _display_name(interaction.user),
+            )
             
             # 관리자가 타인의 공고를 삭제한 경우 작성자에게 DM 알림
             author_id = (recruitment_data or {}).get("author_id")
@@ -1064,13 +1079,18 @@ class Recruitment(commands.Cog):
             view.save_players()
 
             # 영구 기록에도 최신 설정을 반영 (삭제 여부와 무관하게 유지되는 기록)
+            guild = interaction.guild
+            author_member = guild.get_member(view.author_id) if guild and view.author_id else None
             record_recruitment_created(state.message_id, {
                 "author_id": view.author_id,
+                "author_name": _display_name(author_member) if author_member else data.get("author_name"),
                 "game_time": view.game_time,
                 "game_type": view.game_type,
                 "max_players": view.max_players,
                 "voice_channel": view.voice_channel,
                 "created_at": datetime.now(timezone.utc).isoformat(),
+                "guild_id": guild.id if guild else None,
+                "guild_name": guild.name if guild else None,
             })
         except Exception as e:
             state.done = False
