@@ -86,32 +86,6 @@ def record_recruitment_created(message_id, data: dict):
     save_history_data(history)
 
 
-def record_recruitment_deleted(
-    message_id,
-    deleted_by: Optional[int],
-    deleted_by_name: Optional[str] = None,
-):
-    """구인 공고 삭제 시점 정보를 영구 기록에 추가 (기록 자체는 삭제하지 않고 상태만 갱신)"""
-    history = load_history_data()
-    entry = history.get(str(message_id))
-    if entry is None:
-        # 기록이 없던 경우에도 최소 정보로 남겨 둔다
-        entry = {
-            "author_name": None,
-            "game_time": None,
-            "game_type": None,
-            "max_players": None,
-            "voice_channel": None,
-            "created_at": None,
-            "guild_name": None,
-            "participants": [],
-        }
-    entry["deleted_at"] = _format_datetime(datetime.now(timezone.utc).isoformat())
-    entry["deleted_by_name"] = deleted_by_name
-    history[str(message_id)] = entry
-    save_history_data(history)
-
-
 def record_participant_joined(
     message_id,
     user_name: str,
@@ -147,3 +121,29 @@ def record_participant_joined(
         entry["participants"] = participants
         history[str(message_id)] = entry
         save_history_data(history)
+
+
+def record_recruitment_deleted(
+    message_id,
+    deleted_by: Optional[int],
+    deleted_by_name: Optional[str] = None,
+):
+    """구인 공고 삭제 시점 정보를 영구 기록에 추가 (기록 자체는 삭제하지 않고 상태만 갱신)"""
+    history = load_history_data()
+    entry = history.get(str(message_id))
+    if entry is None:
+        # 기록이 없던 경우에도 최소 정보로 남겨 둔다
+        entry = {
+            "author_name": None,
+            "game_time": None,
+            "game_type": None,
+            "max_players": None,
+            "voice_channel": None,
+            "created_at": None,
+            "guild_name": None,
+            "participants": [],
+        }
+    entry["deleted_at"] = _format_datetime(datetime.now(timezone.utc).isoformat())
+    entry["deleted_by_name"] = deleted_by_name
+    history[str(message_id)] = entry
+    save_history_data(history)
