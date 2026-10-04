@@ -60,7 +60,7 @@ def _format_datetime(iso_string: str) -> str:
 def record_recruitment_created(message_id, data: dict):
     """구인 공고 생성/수정 시점의 정보를 영구 기록 파일에 반영 (절대 삭제되지 않음)
 
-    data에는 다음 키를 포함할 수 있습니다:
+    data에는 다음 ���를 포함할 수 있습니다:
         author_id, author_name, game_time, game_type, max_players,
         voice_channel, created_at, guild_id, guild_name
     """
@@ -72,16 +72,17 @@ def record_recruitment_created(message_id, data: dict):
     created_at_formatted = _format_datetime(created_at_input) if created_at_input else None
     
     history[str(message_id)] = {
-        "author_name": data.get("author_name"),
-        "game_time": data.get("game_time"),
-        "game_type": data.get("game_type"),
-        "max_players": data.get("max_players"),
-        "voice_channel": data.get("voice_channel"),
-        "created_at": created_at_formatted,
-        "guild_name": data.get("guild_name", existing.get("guild_name")),
-        "deleted_at": existing.get("deleted_at"),
-        "deleted_by_name": existing.get("deleted_by_name"),
-        "participants": existing.get("participants", []),
+        "방코드": str(message_id),
+        "작성자": data.get("author_name"),
+        "생성시간": created_at_formatted,
+        "게임타입": data.get("game_type"),
+        "게임시간": data.get("game_time"),
+        "최대인원": data.get("max_players"),
+        "음성채널": data.get("voice_channel"),
+        "길드": data.get("guild_name", existing.get("길드")),
+        "참여자": existing.get("참여자", []),
+        "삭제자": existing.get("삭제자"),
+        "삭제시간": existing.get("삭제시간"),
     }
     save_history_data(history)
 
@@ -101,24 +102,25 @@ def record_participant_joined(
     
     if entry is None:
         entry = {
-            "author_name": None,
-            "game_time": None,
-            "game_type": None,
-            "max_players": None,
-            "voice_channel": None,
-            "created_at": None,
-            "guild_name": None,
-            "deleted_at": None,
-            "deleted_by_name": None,
-            "participants": [],
+            "방코드": str(message_id),
+            "작성자": None,
+            "생성시간": None,
+            "게임타입": None,
+            "게임시간": None,
+            "최대인원": None,
+            "음성채널": None,
+            "길드": None,
+            "참여자": [],
+            "삭제자": None,
+            "삭제시간": None,
         }
     
     # 참여자 중복 확인 (문자열 배열에서 해당 사용자가 이미 있는지 확인)
-    participants = entry.get("participants", [])
+    participants = entry.get("참여자", [])
     if not any(user_name in p for p in participants):
         joined_at = datetime.now(timezone.utc).isoformat()
         participants.append(f"{user_name}  ({_format_datetime(joined_at)})")
-        entry["participants"] = participants
+        entry["참여자"] = participants
         history[str(message_id)] = entry
         save_history_data(history)
 
@@ -134,16 +136,19 @@ def record_recruitment_deleted(
     if entry is None:
         # 기록이 없던 경우에도 최소 정보로 남겨 둔다
         entry = {
-            "author_name": None,
-            "game_time": None,
-            "game_type": None,
-            "max_players": None,
-            "voice_channel": None,
-            "created_at": None,
-            "guild_name": None,
-            "participants": [],
+            "방코드": str(message_id),
+            "작성자": None,
+            "생성시간": None,
+            "게임타입": None,
+            "게임시간": None,
+            "최대인원": None,
+            "음성채널": None,
+            "길드": None,
+            "참여자": [],
+            "삭제자": None,
+            "삭제시간": None,
         }
-    entry["deleted_at"] = _format_datetime(datetime.now(timezone.utc).isoformat())
-    entry["deleted_by_name"] = deleted_by_name
+    entry["삭제자"] = deleted_by_name
+    entry["삭제시간"] = _format_datetime(datetime.now(timezone.utc).isoformat())
     history[str(message_id)] = entry
     save_history_data(history)
