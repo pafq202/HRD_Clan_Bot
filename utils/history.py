@@ -66,13 +66,18 @@ def record_recruitment_created(message_id, data: dict):
     """
     history = load_history_data()
     existing = history.get(str(message_id), {})
+    
+    # created_at을 MM-DD HH:MM 형식으로 변환
+    created_at_input = data.get("created_at", "")
+    created_at_formatted = _format_datetime(created_at_input) if created_at_input else None
+    
     history[str(message_id)] = {
         "author_name": data.get("author_name"),
         "game_time": data.get("game_time"),
         "game_type": data.get("game_type"),
         "max_players": data.get("max_players"),
         "voice_channel": data.get("voice_channel"),
-        "created_at": _format_datetime(data.get("created_at", "")),
+        "created_at": created_at_formatted,
         "guild_name": data.get("guild_name", existing.get("guild_name")),
         "deleted_at": existing.get("deleted_at"),
         "deleted_by_name": existing.get("deleted_by_name"),
@@ -134,9 +139,9 @@ def record_participant_joined(
             "participants": [],
         }
     
-    # 참여자 중복 확인
+    # 참여자 중복 확인 (문자열 배열에서 해당 사용자가 이미 있는지 확인)
     participants = entry.get("participants", [])
-    if not any(p.get("user_name") == user_name for p in participants):
+    if not any(user_name in p for p in participants):
         joined_at = datetime.now(timezone.utc).isoformat()
         participants.append(f"{user_name}  ({_format_datetime(joined_at)})")
         entry["participants"] = participants
