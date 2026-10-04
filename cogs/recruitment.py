@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict
 from config.config import get_config
 from utils.directory import directory
-from utils.history import record_recruitment_created, record_recruitment_deleted
+from utils.history import record_recruitment_created, record_recruitment_deleted, record_participant_joined
 
 # 설정 파일 로드
 parser = get_config("config")
@@ -175,6 +175,10 @@ class BattleView(discord.ui.View):
 
         self.players[empty_index] = user
         self.save_players()
+        
+        # 👇 영구 기록에 참여자 추가
+        record_participant_joined(self.message_id, _display_name(user))
+        
         await interaction.message.edit(embed=self.create_embed())
         await interaction.response.send_message(
             f"참여가 완료되었습니다! ({empty_index + 1}번 슬롯)", ephemeral=True, delete_after=3
