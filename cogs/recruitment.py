@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 import os
+import re
 import json
 import asyncio
 from datetime import datetime, timezone
@@ -27,6 +28,23 @@ def _serialize_player_id(player) -> Optional[int]:
     if isinstance(player, int):
         return player
     return getattr(player, "id", None)
+
+
+def _natural_key(text: str):
+    """'SQUAD 2' < 'SQUAD 10' 처럼 숫자 순서대로 정렬하기 위한 키"""
+    return [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", text)]
+
+
+def _get_squad_duo_voice_channels(guild: discord.Guild) -> List[discord.VoiceChannel]:
+    """SQUAD / DUO 음성 채널만 이름 순서대로 반환"""
+    channels = [
+        channel
+        for channel in guild.channels
+        if isinstance(channel, discord.VoiceChannel)
+        and ("squad" in channel.name.lower() or "duo" in channel.name.lower())
+    ]
+    channels.sort(key=lambda channel: _natural_key(channel.name))
+    return channels
 
 
 def _is_same_player(player, user: discord.User) -> bool:
@@ -388,9 +406,9 @@ class VoiceChannelSelect(discord.ui.Select):
         self.session_token = session_token
         self.voice_channel_interaction = voice_channel_interaction
 
-        voice_channels = [channel for channel in guild.channels if isinstance(channel, discord.VoiceChannel)]
+        voice_channels = _get_squad_duo_voice_channels(guild)[:25]
         options = [
-            discord.SelectOption(label=f"🎮 {channel.name}", value=str(channel.id))
+            discord.SelectOption(label=f"🎮 {channel.name}"[:100], value=str(channel.id))
             for channel in voice_channels
         ]
 
@@ -612,9 +630,8 @@ class EditVoiceChannelSelect(discord.ui.Select):
 
         options = [
             discord.SelectOption(label=f"🎮 {channel.name}"[:100], value=str(channel.id))
-            for channel in guild.channels
-            if isinstance(channel, discord.VoiceChannel)
-        ][:25]
+            for channel in _get_squad_duo_voice_channels(guild)[:25]
+        ]
         super().__init__(
             placeholder="음성 채널을 선택하세요...",
             options=options if options else [discord.SelectOption(label="음성 채널 없음", value="none")],
