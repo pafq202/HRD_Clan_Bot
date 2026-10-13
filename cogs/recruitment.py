@@ -35,14 +35,72 @@ def _natural_key(text: str):
     return [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", text)]
 
 
+def _get_voice_whitelist_path() -> str:
+    """음성 채널 화이트리스트 파일 경로 반환"""
+    data_dir = os.path.join(directory, "data")
+    os.makedirs(data_dir, exist_ok=True)
+    return os.path.join(data_dir, "voice_whitelist.json")
+
+
+def load_voice_whitelist() -> dict:
+    """서버별 음성 채널 화이트리스트 로드 ({길드ID(str): [채널ID(int), ...]})"""
+    path = _get_voice_whitelist_path()
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"❌ 화이트리스트 로드 오류: {e}")
+        return {}
+
+
+def save_voice_whitelist(data: dict):
+    """서버별 음성 채널 화이트리스트 저장"""
+    path = _get_voice_whitelist_path()
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"❌ 화이트리스트 저장 오류: {e}")
+
+
+def get_guild_whitelist(guild_id: int) -> List[int]:
+    """특정 길드의 화이트리스트 채널 ID 목록 반환 (없으면 빈 리스트)"""
+    return list(load_voice_whitelist().get(str(guild_id), []))
+
+
+def set_guild_whitelist(guild_id: int, channel_ids: List[int]):
+    """특정 길드의 화이트리스트 저장 (빈 목록이면 항목 제거하여 기본 동작 복귀)"""
+    data = load_voice_whitelist()
+    if channel_ids:
+        data[str(guild_id)] = list(channel_ids)
+    else:
+        data.pop(str(guild_id), None)
+    save_voice_whitelist(data)
+
+
 def _get_squad_duo_voice_channels(guild: discord.Guild) -> List[discord.VoiceChannel]:
-    """SQUAD / DUO 음성 채널만 이름 순서대로 반환"""
-    channels = [
-        channel
-        for channel in guild.channels
-        if isinstance(channel, discord.VoiceChannel)
-        and ("squad" in channel.name.lower() or "duo" in channel.name.lower())
-    ]
+    """구인 드롭다운에 노출할 음성 채널을 이름 순서대로 반환.
+
+    화이트리스트가 설정된 서버는 화이트리스트 채널만 노출하고,
+    설정이 없으면 기존처럼 이름에 SQUAD / DUO 가 포함된 채널만 노출한다.
+    """
+    whitelist = get_guild_whitelist(guild.id)
+    if whitelist:
+        whitelist_set = set(whitelist)
+        channels = [
+            channel
+            for channel in guild.channels
+            if isinstance(channel, discord.VoiceChannel) and channel.id in whitelist_set
+        ]
+    else:
+        channels = [
+            channel
+            for channel in guild.channels
+            if isinstance(channel, discord.VoiceChannel)
+            and ("squad" in channel.name.lower() or "duo" in channel.name.lower())
+        ]
     channels.sort(key=lambda channel: _natural_key(channel.name))
     return channels
 
@@ -709,6 +767,77 @@ class EditRecruitmentView(discord.ui.View):
         self.add_item(EditRecruitmentSelect(cog, recruitments, interaction))
 
 
+class WhitelistSelect(discord.ui.Select):
+    """구인 드롭다운에 노출할 음성 채널을 고르는 멀티선택 드롭다운"""
+    def __init__(self, guild: discord.Guild, page_channels: List[discord.VoiceChannel], current: List[int]):
+        current_set = set(current)
+        options = [
+            discord.SelectOption(
+                label=f"🎮 {channel.name}"[:100],
+                value=str(channel.id),
+                default=channel.id in current_set,
+            )
+            for channel in page_channels
+        ]
+        super().__init__(
+            placeholder="구인 목록에 보여줄 음성 채널을 모두 선택하세요...",
+            min_values=0,
+            max_values=len(options),
+            options=options,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        guild_id = interaction.guild.id
+        selected = [int(value) for value in self.values]
+        set_guild_whitelist(guild_id, selected)
+
+        if selected:
+            names = []
+            for channel_id in selected:
+                channel = interaction.guild.get_channel(channel_id)
+                names.append(f"#{channel.name}" if channel else str(channel_id))
+            description = (
+                f"✅ 구인 목록에 보일 음성 채널을 {len(selected)}개로 설정했습니다!\n\n"
+                + "\n".join(names)
+            )
+        else:
+            description = (
+                "✅ 화이트리스트를 비웠습니다.\n"
+                "이제 기본 동작(이름에 SQUAD/DUO가 포함된 채널만 노출)으로 돌아갑니다."
+            )
+
+        embed = discord.Embed(
+            title="🎧 음성 채널 설정 완료",
+            description=description,
+            color=discord.Color.green(),
+        )
+        await interaction.response.edit_message(embed=embed, view=None)
+
+
+class WhitelistResetButton(discord.ui.Button):
+    """화이트리스트 초기화(전체 보이기) 버튼"""
+    def __init__(self):
+        super().__init__(label="전체 보이기(초기화)", style=discord.ButtonStyle.red)
+
+    async def callback(self, interaction: discord.Interaction):
+        set_guild_whitelist(interaction.guild.id, [])
+        embed = discord.Embed(
+            title="🎧 음성 채널 설정 완료",
+            description="✅ 화이트리스트를 초기화했습니다.\n"
+            "이제 기본 동작(이름에 SQUAD/DUO가 포함된 채널만 노출)으로 돌아갑니다.",
+            color=discord.Color.green(),
+        )
+        await interaction.response.edit_message(embed=embed, view=None)
+
+
+class WhitelistView(discord.ui.View):
+    """음성 채널 화이트리스트 설정 뷰"""
+    def __init__(self, guild: discord.Guild, page_channels: List[discord.VoiceChannel], current: List[int]):
+        super().__init__(timeout=300)
+        self.add_item(WhitelistSelect(guild, page_channels, current))
+        self.add_item(WhitelistResetButton())
+
+
 class Recruitment(commands.Cog):
     """구인 관련 명령어 및 기능"""
     def __init__(self, bot: commands.Bot):
@@ -1152,6 +1281,47 @@ class Recruitment(commands.Cog):
         view = discord.ui.View()
         view.add_item(discord.ui.Button(label="봇 초대하기", url=INVITE_LINK, style=discord.ButtonStyle.link))
 
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @discord.app_commands.command(name="설정", description="구인에 표시할 음성 채널 화이트리스트 설정")
+    @discord.app_commands.check(is_admin_or_owner)
+    async def voice_whitelist_settings(self, interaction: discord.Interaction):
+        """슬래시 명령어: /설정 - 구인 목록 드롭다운에 보여줄 음성 채널만 선택 (관리자/서버주인 전용)"""
+        guild = interaction.guild
+        if guild is None:
+            await interaction.response.send_message(
+                "❌ 서버에서만 사용할 수 있습니다.", ephemeral=True, delete_after=5
+            )
+            return
+
+        voice_channels = [c for c in guild.channels if isinstance(c, discord.VoiceChannel)]
+        voice_channels.sort(key=lambda channel: _natural_key(channel.name))
+
+        if not voice_channels:
+            await interaction.response.send_message(
+                "❌ 이 서버에는 음성 채널이 없습니다.", ephemeral=True, delete_after=5
+            )
+            return
+
+        # Discord 드롭다운은 최대 25개까지만 지원
+        page_channels = voice_channels[:25]
+        current = get_guild_whitelist(guild.id)
+
+        description = (
+            "구인 목록(`/양식`, `/수정`)의 음성 채널 드롭다운에 **보여줄 채널만** 선택하세요.\n"
+            "선택한 채널만 노출됩니다. (화이트리스트 방식)\n\n"
+            "• 아무 것도 선택하지 않고 저장하거나 **전체 보이기(초기화)** 를 누르면\n"
+            "  기본 동작(이름에 SQUAD/DUO가 포함된 채널만 노출)으로 돌아갑니다."
+        )
+        if len(voice_channels) > 25:
+            description += f"\n\n⚠️ 음성 채널이 {len(voice_channels)}개라 처음 25개만 표시됩니다."
+
+        embed = discord.Embed(
+            title="🎧 음성 채널 화이트리스트 설정",
+            description=description,
+            color=discord.Color.blue(),
+        )
+        view = WhitelistView(guild, page_channels, current)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
